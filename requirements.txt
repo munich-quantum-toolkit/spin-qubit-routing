@@ -6,7 +6,7 @@ matplotlib==3.10.8
 networkx==3.6.1
 numpy==2.4.4
 packaging==26.1
-pillow==12.2.0
+pillow==12.3.0
 pyparsing==3.3.2
 python-dateutil==2.9.0.post0
 SciencePlots==2.2.1
