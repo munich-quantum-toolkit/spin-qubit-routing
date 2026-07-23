@@ -1,110 +1,171 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from heapq import heappush, heappop
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Set
+from dataclasses import dataclass
+from heapq import heappop, heappush
+from typing import TypeAlias
 
 import networkx as nx
 
-Coord = Tuple[int, int]
-TimedNode = Tuple[Coord, int]
+
+Coord: TypeAlias = tuple[int, int]
+TimedNode: TypeAlias = tuple[Coord, int]
+Edge: TypeAlias = frozenset[Coord]
+Cost: TypeAlias = tuple[int, int]
+QueueEntry: TypeAlias = tuple[Cost, TimedNode]
 
 MAX_TIME = 300
+
 
 @dataclass(frozen=True)
 class Qubit:
     id: int
     pos: Coord
 
-class Reservations:
 
-    def __init__(self, G: nx.Graph, blocked_edges: Optional[Set[frozenset]] = None) -> None:
-        self.node_caps: Dict[Coord, Dict[int, int]] = defaultdict(lambda: defaultdict(int))
-        self.edge_caps: Dict[frozenset, Dict[int, int]] = defaultdict(lambda: defaultdict(int))
-        self.node_type: Dict[Coord, str] = {n: G.nodes[n]["type"] for n in G.nodes()}
-        self.blocked_edges: Set[frozenset] = blocked_edges or set()
+class Reservations:
+    def __init__(
+        self,
+        G: nx.Graph,
+        blocked_edges: set[Edge] | None = None,
+    ) -> None:
+        self.node_caps: dict[Coord, dict[int, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
+        self.edge_caps: dict[Edge, dict[int, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
+        self.node_type: dict[Coord, str] = {
+            node: G.nodes[node]["type"]
+            for node in G.nodes
+        }
+        self.blocked_edges = blocked_edges or set()
 
     def node_capacity(self, node: Coord) -> int:
         return 2 if self.node_type[node] == "IN" else 1
 
-    def can_occupy(self, node: Coord, t: int) -> bool:
-        return self.node_caps[node][t] < self.node_capacity(node)
+    def can_occupy(self, node: Coord, time: int) -> bool:
+        return self.node_caps[node][time] < self.node_capacity(node)
 
-    def occupy_node(self, node: Coord, t: int) -> None:
-        self.node_caps[node][t] += 1
+    def occupy_node(self, node: Coord, time: int) -> None:
+        self.node_caps[node][time] += 1
 
-    def can_traverse(self, u: Coord, v: Coord, t: int) -> bool:
-        e = frozenset({u, v})
-        if e in self.blocked_edges:
+    def can_traverse(
+        self,
+        source: Coord,
+        target: Coord,
+        time: int,
+    ) -> bool:
+        edge = frozenset({source, target})
+
+        if edge in self.blocked_edges:
             return False
-        return self.edge_caps[e][t] == 0
 
-    def traverse_edge(self, u: Coord, v: Coord, t: int) -> None:
-        self.edge_caps[frozenset({u, v})][t] += 1
+        return self.edge_caps[edge][time] == 0
 
-    def commit(self, path: List[TimedNode]) -> None:
+    def traverse_edge(
+        self,
+        source: Coord,
+        target: Coord,
+        time: int,
+    ) -> None:
+        edge = frozenset({source, target})
+        self.edge_caps[edge][time] += 1
+
+    def commit(self, path: list[TimedNode]) -> None:
         self.occupy_node(*path[0])
-        for (u, t), (v, t2) in zip(path[:-1], path[1:]):
-            self.occupy_node(v, t2)
-            if u != v:
-                self.traverse_edge(u, v, t)
+
+        for (source, time), (target, next_time) in zip(path, path[1:]):
+            self.occupy_node(target, next_time)
+
+            if source != target:
+                self.traverse_edge(source, target, time)
 
 
 class AStar:
-    """A* search that minimizes (moves first, then time) and respects reservations."""
-
     @staticmethod
     def search(
         G: nx.Graph,
         start: Coord,
         goal: Coord,
-        reservations: Reservations
-    ) -> Optional[List[TimedNode]]:
-        
-        def h(n: Coord) -> int:
-            return max(abs(n[0] - goal[0]), abs(n[1] - goal[1]))
+        reservations: Reservations,
+    ) -> list[TimedNode] | None:
+        def heuristic(node: Coord) -> int:
+            return max(
+                abs(node[0] - goal[0]),
+                abs(node[1] - goal[1]),
+            )
 
         start_state: TimedNode = (start, 0)
-        dist: Dict[TimedNode, Tuple[int, int]] = {start_state: (0, 0)}  
-        came_from: Dict[TimedNode, TimedNode] = {}
+        distances: dict[TimedNode, Cost] = {
+            start_state: (0, 0)
+        }
+        came_from: dict[TimedNode, TimedNode] = {}
 
-        openQueue: List[Tuple[Tuple[int, int], TimedNode]] = []
-        heappush(openQueue, ((h(start), 0), start_state))
+        open_queue: list[QueueEntry] = []
+        heappush(
+            open_queue,
+            ((heuristic(start), 0), start_state),
+        )
 
-        while openQueue:
-            (_, _), (node, t) = heappop(openQueue)
-            gm, gt = dist[(node, t)]
+        while open_queue:
+            _, current_state = heappop(open_queue)
+            node, time = current_state
+            move_cost, time_cost = distances[current_state]
 
             if node == goal:
-                path: List[TimedNode] = [(node, t)]
-                cur = (node, t)
-                while cur in came_from:
-                    cur = came_from[cur]
-                    path.append(cur)
-                return list(reversed(path))
+                path = [current_state]
 
-            if t >= MAX_TIME:
+                while current_state in came_from:
+                    current_state = came_from[current_state]
+                    path.append(current_state)
+
+                path.reverse()
+                return path
+
+            if time >= MAX_TIME:
                 continue
 
-            successors: List[Tuple[Coord, int, int, int]] = []
-            successors.append((node, t + 1, 0, 1))
-            for nbr in G.neighbors(node):
-                successors.append((nbr, t + 1, 1, 1)) 
+            successors = [(node, time + 1, 0, 1)]
+            successors.extend(
+                (neighbor, time + 1, 1, 1)
+                for neighbor in G.neighbors(node)
+            )
 
-            for (n2, t2, dm, dt) in successors:
-                if not reservations.can_occupy(n2, t2):
+            for next_node, next_time, move_delta, time_delta in successors:
+                if not reservations.can_occupy(next_node, next_time):
                     continue
-                if n2 != node and not reservations.can_traverse(node, n2, t):
+
+                if (
+                    next_node != node
+                    and not reservations.can_traverse(
+                        node,
+                        next_node,
+                        time,
+                    )
+                ):
                     continue
 
-                g2 = (gm + dm, gt + dt)
+                next_state = (next_node, next_time)
+                next_cost = (
+                    move_cost + move_delta,
+                    time_cost + time_delta,
+                )
+                previous_cost = distances.get(next_state)
 
-                old = dist.get((n2, t2))
-                if old is None or g2 < old:
-                    dist[(n2, t2)] = g2
-                    came_from[(n2, t2)] = (node, t)
-                    f2 = (g2[0] + h(n2), g2[1] + h(n2))
-                    heappush(openQueue, (f2, (n2, t2)))
+                if previous_cost is not None and next_cost >= previous_cost:
+                    continue
+
+                distances[next_state] = next_cost
+                came_from[next_state] = current_state
+
+                estimated_cost = (
+                    next_cost[0] + heuristic(next_node),
+                    next_cost[1] + heuristic(next_node),
+                )
+                heappush(
+                    open_queue,
+                    (estimated_cost, next_state),
+                )
 
         return None

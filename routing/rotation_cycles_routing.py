@@ -3,13 +3,12 @@ from __future__ import annotations
 import random
 from collections import deque
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple
 
 import networkx as nx
 
 from routing.common import Coord, Qubit, TimedNode
 from routing.default_routing import DefaultRoutingPlanner
-from routing.routing_strategy import RoutingStrategy
+from routing.routing_strategy import RoutingResult, RoutingStrategy
 
 MAX_WAIT_TIME = 100
 
@@ -28,18 +27,18 @@ def _is_diag(u: Coord, v: Coord) -> bool:
 
 @dataclass(frozen=True)
 class _Step:
-    updates_pair_only: Dict[int, Coord]
+    updates_pair_only: dict[int, Coord]
     sample: bool
-    loops: List[Tuple[List[Coord], int]]  # (nodes, direction)
+    loops: list[tuple[list[Coord], int]]
 
 
 @dataclass
 class _Plan:
-    ticks: List[_Step]
-    pos_trace: Dict[int, List[Coord]]
-    used_loops: Set[Tuple[Coord, ...]]
-    in_idx: Optional[int]
-    out_idx: Optional[int]
+    ticks: list[_Step]
+    pos_trace: dict[int, list[Coord]]
+    used_loops: set[tuple[Coord, ...]]
+    in_idx: int | None
+    out_idx: int | None
 
     @property
     def length(self) -> int:
@@ -50,29 +49,29 @@ class _RoutingContext:
     def __init__(
         self,
         G: nx.Graph,
-        qubits: List[Qubit],
+        qubits: list[Qubit],
         p_success: float,
         p_repair: float,
         *,
-        max_wait_time: Optional[int] = None,
+        max_wait_time: int | None = None,
         stuck_error_prefix: str = "Routing stuck",
-    ):
+    ) -> None:
         self.G = G
         self.p_success = p_success
         self.p_repair = p_repair
         self.max_wait_time = max_wait_time
         self.stuck_error_prefix = stuck_error_prefix
 
-        self.current_pos: Dict[int, Coord] = {q.id: q.pos for q in qubits}
-        self.all_qids: Set[int] = {q.id for q in qubits}
+        self.current_pos: dict[int, Coord] = {q.id: q.pos for q in qubits}
+        self.all_qids: set[int] = {q.id for q in qubits}
 
-        self.timelines: Dict[int, List[TimedNode]] = {
+        self.timelines: dict[int, list[TimedNode]] = {
             q.id: [(self.current_pos[q.id], 0)] for q in qubits
         }
         self.t = 0
 
-        self.defective_edges: Set[frozenset] = set()
-        self.edge_timebands: List[Tuple[int, int, Set[frozenset]]] = []
+        self.defective_edges: set[frozenset] = set()
+        self.edge_timebands: list[tuple[int, int, set[frozenset]]] = []
 
         self.wait_streak = 0 if max_wait_time is not None else None
 
@@ -85,12 +84,12 @@ class _RoutingContext:
     def is_in(self, n: Coord) -> bool:
         return self.G.nodes[n].get("type") == "IN"
 
-    def sn_neighbors_of_meet(self, meeting: Coord) -> List[Coord]:
+    def sn_neighbors_of_meet(self, meeting: Coord) -> list[Coord]:
         if not self.is_in(meeting):
             return []
         return [w for w in self.G.neighbors(meeting) if self.is_sn(w)]
 
-    def shortest_path_sn(self, src: Coord, dst: Coord) -> Optional[List[Coord]]:
+    def shortest_path_sn(self, src: Coord, dst: Coord) -> list[Coord] | None:
         try:
             return nx.shortest_path(self.SN, src, dst)
         except nx.NetworkXNoPath:
@@ -106,7 +105,7 @@ class _RoutingContext:
                 if random.random() < (1.0 - self.p_success):
                     self.defective_edges.add(e)
 
-    def would_use_defect(self, pending: Dict[int, Coord]) -> bool:
+    def would_use_defect(self, pending: dict[int, Coord]) -> bool:
         for qid, newp in pending.items():
             u = self.current_pos[qid]
             v = newp
@@ -114,7 +113,7 @@ class _RoutingContext:
                 return True
         return False
 
-    def commit_tick(self, pending: Dict[int, Coord], *, sample: bool) -> bool:
+    def commit_tick(self, pending: dict[int, Coord], *, sample: bool) -> bool:
         if sample:
             self.sample_edge_failures()
 
@@ -151,11 +150,11 @@ class _RoutingContext:
 
 class _LoopHelpers:
     @staticmethod
-    def canonical_loop_tuple(loop: List[Coord]) -> Tuple[Coord, ...]:
+    def canonical_loop_tuple(loop: list[Coord]) -> tuple[Coord, ...]:
         return tuple(sorted(loop))
 
     @staticmethod
-    def rot_dir_loop(loop: List[Coord], u: Coord, v: Coord) -> int:
+    def rot_dir_loop(loop: list[Coord], u: Coord, v: Coord) -> int:
         i = loop.index(u)
         n = len(loop)
         if loop[(i + 1) % n] == v:
@@ -166,15 +165,15 @@ class _LoopHelpers:
 
     @staticmethod
     def compute_pair_rotation_updates_for_loop(
-        loop: List[Coord],
+        loop: list[Coord],
         direction: int,
         a_id: int,
         b_id: int,
         la: Coord,
         lb: Coord,
-    ) -> Dict[int, Coord]:
+    ) -> dict[int, Coord]:
         idx = {p: i for i, p in enumerate(loop)}
-        out: Dict[int, Coord] = {}
+        out: dict[int, Coord] = {}
         n = len(loop)
         if la in idx:
             out[a_id] = loop[(idx[la] + direction) % n]
@@ -185,13 +184,13 @@ class _LoopHelpers:
 
 class _DiamondHelpers:
     @staticmethod
-    def diag_sn_neighbors(G: nx.Graph, is_sn_fn, n: Coord) -> List[Coord]:
+    def diag_sn_neighbors(G: nx.Graph, is_sn_fn, n: Coord) -> list[Coord]:
         if not is_sn_fn(n):
             return []
         return [w for w in G.neighbors(n) if is_sn_fn(w) and _is_diag(n, w)]
 
     @staticmethod
-    def diamond_for_edge(G: nx.Graph, is_sn_fn, u: Coord, v: Coord) -> Optional[List[Coord]]:
+    def diamond_for_edge(G: nx.Graph, is_sn_fn, u: Coord, v: Coord) -> list[Coord] | None:
         if not (is_sn_fn(u) and is_sn_fn(v) and _is_diag(u, v)):
             return None
         Su = [w for w in _DiamondHelpers.diag_sn_neighbors(G, is_sn_fn, u) if w != v]
@@ -203,25 +202,25 @@ class _DiamondHelpers:
         return None
 
     @staticmethod
-    def rot_dir_diamond(diamond: List[Coord], u: Coord, v: Coord) -> int:
+    def rot_dir_diamond(diamond: list[Coord], u: Coord, v: Coord) -> int:
         i = diamond.index(u)
         return +1 if diamond[(i + 1) % 4] == v else -1
 
     @staticmethod
-    def canonical_diamond_tuple(diamond: List[Coord]) -> Tuple[Coord, Coord, Coord, Coord]:
+    def canonical_diamond_tuple(diamond: list[Coord]) -> tuple[Coord, Coord, Coord, Coord]:
         return tuple(sorted(diamond))
 
     @staticmethod
     def compute_pair_rotation_updates_for_diamond(
-        diamond: List[Coord],
+        diamond: list[Coord],
         direction: int,
         a_id: int,
         b_id: int,
         la: Coord,
         lb: Coord,
-    ) -> Dict[int, Coord]:
+    ) -> dict[int, Coord]:
         idx = {p: i for i, p in enumerate(diamond)}
-        out: Dict[int, Coord] = {}
+        out: dict[int, Coord] = {}
         if la in idx:
             out[a_id] = diamond[(idx[la] + direction) % 4]
         if lb in idx:
@@ -230,22 +229,22 @@ class _DiamondHelpers:
 
 
 class _PlannerCommon:
-    def __init__(self, ctx: _RoutingContext):
+    def __init__(self, ctx: _RoutingContext) -> None:
         self.ctx = ctx
-        self.live_pre_by_pair: Dict[Tuple[int, int], Dict[int, Coord]] = {}
+        self.live_pre_by_pair: dict[tuple[int, int], dict[int, Coord]] = {}
 
     def expand_runtime_rotations(
         self,
-        base_updates: Dict[int, Coord],
-        loops: List[Tuple[List[Coord], int]],
+        base_updates: dict[int, Coord],
+        loops: list[tuple[list[Coord], int]],
         *,
-        exclude_qids: Optional[Set[int]] = None,
-    ) -> Dict[int, Coord]:
+        exclude_qids: set[int] | None = None,
+    ) -> dict[int, Coord]:
         if not loops:
             return dict(base_updates)
 
         exclude = exclude_qids or set()
-        idx_cache: Dict[Tuple[Coord, ...], Dict[Coord, int]] = {}
+        idx_cache: dict[tuple[Coord, ...], dict[Coord, int]] = {}
         out = dict(base_updates)
 
         for nodes, direction in loops:
@@ -262,10 +261,14 @@ class _PlannerCommon:
 
         return out
 
-    def foreign_qubits_on_any_loop(self, loops: List[Tuple[List[Coord], int]], allowed: Set[int]) -> bool:
+    def foreign_qubits_on_any_loop(
+        self,
+        loops: list[tuple[list[Coord], int]],
+        allowed: set[int],
+    ) -> bool:
         if not loops:
             return False
-        nodes: Set[Coord] = set()
+        nodes: set[Coord] = set()
         for loop_nodes, _ in loops:
             nodes |= set(loop_nodes)
         for qid, pos in self.ctx.current_pos.items():
@@ -278,9 +281,9 @@ class _PlannerCommon:
     def plans_compatible_distance(
         self,
         p1: _Plan,
-        ab1: Tuple[int, int],
+        ab1: tuple[int, int],
         p2: _Plan,
-        ab2: Tuple[int, int],
+        ab2: tuple[int, int],
     ) -> bool:
         a1, b1 = ab1
         a2, b2 = ab2
@@ -320,10 +323,10 @@ class _PlannerCommon:
                 return False
         return True
 
-    def group_parallel(self, plans: Dict[Tuple[int, int], _Plan]) -> List[List[Tuple[int, int]]]:
+    def group_parallel(self, plans: dict[tuple[int, int], _Plan]) -> list[list[tuple[int, int]]]:
         remaining_pids = sorted(plans.keys())
-        groups: List[List[Tuple[int, int]]] = []
-        used: Set[Tuple[int, int]] = set()
+        groups: list[list[tuple[int, int]]] = []
+        used: set[tuple[int, int]] = set()
 
         for pid in remaining_pids:
             if pid in used:
@@ -345,17 +348,17 @@ class _PlannerCommon:
 
         return groups
 
-    def build_pair_order(self, pairs: List[Tuple[Qubit, Qubit]]) -> Dict[Tuple[int, int], int]:
-        pair_order: Dict[Tuple[int, int], int] = {}
+    def build_pair_order(self, pairs: list[tuple[Qubit, Qubit]]) -> dict[tuple[int, int], int]:
+        pair_order: dict[tuple[int, int], int] = {}
         for idx, (qa, qb) in enumerate(pairs):
             pair_order[(qa.id, qb.id)] = idx
         return pair_order
 
     def is_ready_pair(
         self,
-        pid: Tuple[int, int],
-        remaining_pids: Set[Tuple[int, int]],
-        pair_order: Dict[Tuple[int, int], int],
+        pid: tuple[int, int],
+        remaining_pids: set[tuple[int, int]],
+        pair_order: dict[tuple[int, int], int],
     ) -> bool:
         idx = pair_order[pid]
         a, b = pid
@@ -369,8 +372,8 @@ class _PlannerCommon:
                     return False
         return True
 
-    def best_pre(self, meet: Coord, src: Coord) -> Optional[Tuple[Coord, List[Coord]]]:
-        best: Optional[Tuple[Coord, List[Coord]]] = None
+    def best_pre(self, meet: Coord, src: Coord) -> tuple[Coord, list[Coord]] | None:
+        best: tuple[Coord, list[Coord]] | None = None
         for pre in self.ctx.sn_neighbors_of_meet(meet):
             p = self.ctx.shortest_path_sn(src, pre)
             if p is None:
@@ -381,7 +384,7 @@ class _PlannerCommon:
 
     def choose_meeting(
         self, la: Coord, lb: Coord
-    ) -> Optional[Tuple[Coord, Tuple[Coord, List[Coord]], Tuple[Coord, List[Coord]]]]:
+    ) -> tuple[Coord, tuple[Coord, list[Coord]], tuple[Coord, list[Coord]]] | None:
         cands = DefaultRoutingPlanner._best_meeting_candidates(
             self.ctx.G, la, lb, reserved=set(), forbidden_nodes=set()
         )
@@ -396,7 +399,7 @@ class _PlannerCommon:
 
     def commit_plan_sequential_with_retry(
         self,
-        pid: Tuple[int, int],
+        pid: tuple[int, int],
         plan: _Plan,
         *,
         allow_live_pre: bool = True,
@@ -406,7 +409,7 @@ class _PlannerCommon:
         while step < plan.length:
             s = plan.ticks[step]
 
-            pending_pre: Optional[Dict[int, Coord]] = None
+            pending_pre: dict[int, Coord] | None = None
             if allow_live_pre and plan.in_idx is not None and step == plan.in_idx:
                 pending_pre = {
                     a_id: self.ctx.current_pos[a_id],
@@ -434,8 +437,8 @@ class _CirclePlannerEngine(_PlannerCommon):
         self,
         u: Coord,
         v: Coord,
-        target_lens: Tuple[int, ...] = (6, 8),
-    ) -> Optional[List[Coord]]:
+        target_lens: tuple[int, ...] = (6, 8),
+    ) -> list[Coord] | None:
         if not (self.ctx.is_sn(u) and self.ctx.is_sn(v)):
             return None
         if not self.ctx.SN.has_edge(u, v):
@@ -446,7 +449,7 @@ class _CirclePlannerEngine(_PlannerCommon):
         for target_len in target_lens:
             start = v
             max_nodes = target_len
-            queue: deque[Tuple[Coord, List[Coord]]] = deque()
+            queue: deque[tuple[Coord, list[Coord]]] = deque()
             queue.append((start, [start]))
 
             while queue:
@@ -474,7 +477,7 @@ class _CirclePlannerEngine(_PlannerCommon):
 
         return None
 
-    def plan_pair_solo(self, a_id: int, b_id: int) -> Optional[_Plan]:
+    def plan_pair_solo(self, a_id: int, b_id: int) -> _Plan | None:
         la = self.ctx.current_pos[a_id]
         lb = self.ctx.current_pos[b_id]
         if not (self.ctx.is_sn(la) and self.ctx.is_sn(lb)):
@@ -485,18 +488,18 @@ class _CirclePlannerEngine(_PlannerCommon):
             return None
 
         meet, (preA, pathA), (preB, pathB) = chosen
-        ticks: List[_Step] = []
-        trace: Dict[int, List[Coord]] = {a_id: [la], b_id: [lb]}
-        used_loops: Set[Tuple[Coord, ...]] = set()
-        in_idx: Optional[int] = None
-        out_idx: Optional[int] = None
+        ticks: list[_Step] = []
+        trace: dict[int, list[Coord]] = {a_id: [la], b_id: [lb]}
+        used_loops: set[tuple[Coord, ...]] = set()
+        in_idx: int | None = None
+        out_idx: int | None = None
 
         idxA = 0
         idxB = 0
 
         while la != preA or lb != preB:
-            updates: Dict[int, Coord] = {}
-            loops_for_step: List[Tuple[List[Coord], int]] = []
+            updates: dict[int, Coord] = {}
+            loops_for_step: list[tuple[list[Coord], int]] = []
 
             if la != preA and idxA + 1 < len(pathA):
                 uA, vA = pathA[idxA], pathA[idxA + 1]
@@ -551,7 +554,7 @@ class _CirclePlannerEngine(_PlannerCommon):
             trace[a_id].append(la)
             trace[b_id].append(lb)
 
-        updates_in: Dict[int, Coord] = {}
+        updates_in: dict[int, Coord] = {}
         if la != meet:
             updates_in[a_id] = meet
         if lb != meet:
@@ -572,17 +575,21 @@ class _CirclePlannerEngine(_PlannerCommon):
 
         return _Plan(ticks, trace, used_loops, in_idx, out_idx)
 
-    def run(self, pairs: List[Tuple[Qubit, Qubit]]) -> Tuple[Dict[int, List[TimedNode]], List[Tuple[int, int, Set[frozenset]]]]:
+    def run(self, pairs: list[tuple[Qubit, Qubit]]) -> RoutingResult:
         pair_order = self.build_pair_order(pairs)
-        remaining: Set[Tuple[int, int]] = {(qa.id, qb.id) for qa, qb in pairs}
+        remaining: set[tuple[int, int]] = {(qa.id, qb.id) for qa, qb in pairs}
 
         while remaining:
-            ready_pids = [pid for pid in remaining if self.is_ready_pair(pid, remaining, pair_order)]
+            ready_pids = [
+                pid
+                for pid in remaining
+                if self.is_ready_pair(pid, remaining, pair_order)
+            ]
             if not ready_pids:
                 ready_pids = list(remaining)
 
-            plans: Dict[Tuple[int, int], _Plan] = {}
-            sequential_fallback: List[Tuple[int, int]] = []
+            plans: dict[tuple[int, int], _Plan] = {}
+            sequential_fallback: list[tuple[int, int]] = []
 
             for pid in sorted(ready_pids, key=lambda p: pair_order[p]):
                 a, b = pid
@@ -600,16 +607,16 @@ class _CirclePlannerEngine(_PlannerCommon):
             something_finished = False
 
             for grp in groups:
-                group_qids: Set[int] = {x for ab in grp for x in ab}
+                group_qids: set[int] = {x for ab in grp for x in ab}
                 L = max(plans[pid].length for pid in grp) if grp else 0
                 parallel_failed = False
                 step = 0
 
                 while step < L:
-                    updates_pair_only: Dict[int, Coord] = {}
-                    sample_flags: List[bool] = []
-                    step_loops: List[Tuple[List[Coord], int]] = []
-                    pending_live_pre: Dict[Tuple[int, int], Dict[int, Coord]] = {}
+                    updates_pair_only: dict[int, Coord] = {}
+                    sample_flags: list[bool] = []
+                    step_loops: list[tuple[list[Coord], int]] = []
+                    pending_live_pre: dict[tuple[int, int], dict[int, Coord]] = {}
                     conflict = False
 
                     for pid in grp:
@@ -627,7 +634,10 @@ class _CirclePlannerEngine(_PlannerCommon):
                             a_id, b_id = pid
                             pre_map = self.live_pre_by_pair.get(
                                 pid,
-                                {a_id: self.ctx.current_pos[a_id], b_id: self.ctx.current_pos[b_id]},
+                                {
+                                    a_id: self.ctx.current_pos[a_id],
+                                    b_id: self.ctx.current_pos[b_id],
+                                },
                             )
                             s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
 
@@ -678,15 +688,15 @@ class _CirclePlannerEngine(_PlannerCommon):
 
 
 class _HybridPlannerEngine(_PlannerCommon):
-    def diamond_for_edge(self, u: Coord, v: Coord) -> Optional[List[Coord]]:
+    def diamond_for_edge(self, u: Coord, v: Coord) -> list[Coord] | None:
         return _DiamondHelpers.diamond_for_edge(self.ctx.G, self.ctx.is_sn, u, v)
 
     def circle_for_edge(
         self,
         u: Coord,
         v: Coord,
-        target_lens: Tuple[int, ...] = (6, 8),
-    ) -> Optional[List[Coord]]:
+        target_lens: tuple[int, ...] = (6, 8),
+    ) -> list[Coord] | None:
         if not (self.ctx.is_sn(u) and self.ctx.is_sn(v)):
             return None
         if not self.ctx.SN.has_edge(u, v):
@@ -696,7 +706,7 @@ class _HybridPlannerEngine(_PlannerCommon):
 
         for target_len in target_lens:
             max_nodes = target_len
-            queue: deque[Tuple[Coord, List[Coord]]] = deque()
+            queue: deque[tuple[Coord, list[Coord]]] = deque()
             queue.append((v, [v]))
 
             while queue:
@@ -724,7 +734,7 @@ class _HybridPlannerEngine(_PlannerCommon):
 
         return None
 
-    def plan_pair_rotation(self, a_id: int, b_id: int) -> Optional[_Plan]:
+    def plan_pair_rotation(self, a_id: int, b_id: int) -> _Plan | None:
         la = self.ctx.current_pos[a_id]
         lb = self.ctx.current_pos[b_id]
         if not (self.ctx.is_sn(la) and self.ctx.is_sn(lb)):
@@ -735,18 +745,18 @@ class _HybridPlannerEngine(_PlannerCommon):
             return None
 
         meet, (preA, pathA), (preB, pathB) = chosen
-        ticks: List[_Step] = []
-        trace: Dict[int, List[Coord]] = {a_id: [la], b_id: [lb]}
-        used: Set[Tuple[Coord, ...]] = set()
-        in_idx: Optional[int] = None
-        out_idx: Optional[int] = None
+        ticks: list[_Step] = []
+        trace: dict[int, list[Coord]] = {a_id: [la], b_id: [lb]}
+        used: set[tuple[Coord, ...]] = set()
+        in_idx: int | None = None
+        out_idx: int | None = None
 
         idxA = 0
         idxB = 0
 
         while la != preA or lb != preB:
-            updates: Dict[int, Coord] = {}
-            loops_for_step: List[Tuple[List[Coord], int]] = []
+            updates: dict[int, Coord] = {}
+            loops_for_step: list[tuple[list[Coord], int]] = []
 
             if la != preA and idxA + 1 < len(pathA):
                 uA, vA = pathA[idxA], pathA[idxA + 1]
@@ -801,7 +811,7 @@ class _HybridPlannerEngine(_PlannerCommon):
             trace[a_id].append(la)
             trace[b_id].append(lb)
 
-        updates_in: Dict[int, Coord] = {}
+        updates_in: dict[int, Coord] = {}
         if la != meet:
             updates_in[a_id] = meet
         if lb != meet:
@@ -822,7 +832,7 @@ class _HybridPlannerEngine(_PlannerCommon):
 
         return _Plan(ticks, trace, used, in_idx, out_idx)
 
-    def plan_pair_circle(self, a_id: int, b_id: int) -> Optional[_Plan]:
+    def plan_pair_circle(self, a_id: int, b_id: int) -> _Plan | None:
         la = self.ctx.current_pos[a_id]
         lb = self.ctx.current_pos[b_id]
         if not (self.ctx.is_sn(la) and self.ctx.is_sn(lb)):
@@ -833,18 +843,18 @@ class _HybridPlannerEngine(_PlannerCommon):
             return None
 
         meet, (preA, pathA), (preB, pathB) = chosen
-        ticks: List[_Step] = []
-        trace: Dict[int, List[Coord]] = {a_id: [la], b_id: [lb]}
-        used: Set[Tuple[Coord, ...]] = set()
-        in_idx: Optional[int] = None
-        out_idx: Optional[int] = None
+        ticks: list[_Step] = []
+        trace: dict[int, list[Coord]] = {a_id: [la], b_id: [lb]}
+        used: set[tuple[Coord, ...]] = set()
+        in_idx: int | None = None
+        out_idx: int | None = None
 
         idxA = 0
         idxB = 0
 
         while la != preA or lb != preB:
-            updates: Dict[int, Coord] = {}
-            loops_for_step: List[Tuple[List[Coord], int]] = []
+            updates: dict[int, Coord] = {}
+            loops_for_step: list[tuple[list[Coord], int]] = []
 
             if la != preA and idxA + 1 < len(pathA):
                 uA, vA = pathA[idxA], pathA[idxA + 1]
@@ -899,7 +909,7 @@ class _HybridPlannerEngine(_PlannerCommon):
             trace[a_id].append(la)
             trace[b_id].append(lb)
 
-        updates_in: Dict[int, Coord] = {}
+        updates_in: dict[int, Coord] = {}
         if la != meet:
             updates_in[a_id] = meet
         if lb != meet:
@@ -920,17 +930,21 @@ class _HybridPlannerEngine(_PlannerCommon):
 
         return _Plan(ticks, trace, used, in_idx, out_idx)
 
-    def run(self, pairs: List[Tuple[Qubit, Qubit]]) -> Tuple[Dict[int, List[TimedNode]], List[Tuple[int, int, Set[frozenset]]]]:
+    def run(self, pairs: list[tuple[Qubit, Qubit]]) -> RoutingResult:
         pair_order = self.build_pair_order(pairs)
-        remaining: Set[Tuple[int, int]] = {(qa.id, qb.id) for qa, qb in pairs}
+        remaining: set[tuple[int, int]] = {(qa.id, qb.id) for qa, qb in pairs}
 
         while remaining:
-            ready_pids = [pid for pid in remaining if self.is_ready_pair(pid, remaining, pair_order)]
+            ready_pids = [
+                pid
+                for pid in remaining
+                if self.is_ready_pair(pid, remaining, pair_order)
+            ]
             if not ready_pids:
                 ready_pids = list(remaining)
 
-            plans: Dict[Tuple[int, int], _Plan] = {}
-            sequential_fallback: List[Tuple[int, int]] = []
+            plans: dict[tuple[int, int], _Plan] = {}
+            sequential_fallback: list[tuple[int, int]] = []
 
             for pid in sorted(ready_pids, key=lambda p: pair_order[p]):
                 a, b = pid
@@ -948,16 +962,16 @@ class _HybridPlannerEngine(_PlannerCommon):
             something_finished = False
 
             for grp in groups:
-                group_qids: Set[int] = {x for ab in grp for x in ab}
+                group_qids: set[int] = {x for ab in grp for x in ab}
                 L = max(plans[pid].length for pid in grp) if grp else 0
                 parallel_failed = False
                 step = 0
 
                 while step < L:
-                    updates_pair_only: Dict[int, Coord] = {}
-                    sample_flags: List[bool] = []
-                    step_loops: List[Tuple[List[Coord], int]] = []
-                    pending_live_pre: Dict[Tuple[int, int], Dict[int, Coord]] = {}
+                    updates_pair_only: dict[int, Coord] = {}
+                    sample_flags: list[bool] = []
+                    step_loops: list[tuple[list[Coord], int]] = []
+                    pending_live_pre: dict[tuple[int, int], dict[int, Coord]] = {}
                     conflict = False
 
                     for pid in grp:
@@ -975,7 +989,10 @@ class _HybridPlannerEngine(_PlannerCommon):
                             a_id, b_id = pid
                             pre_map = self.live_pre_by_pair.get(
                                 pid,
-                                {a_id: self.ctx.current_pos[a_id], b_id: self.ctx.current_pos[b_id]},
+                                {
+                                    a_id: self.ctx.current_pos[a_id],
+                                    b_id: self.ctx.current_pos[b_id],
+                                },
                             )
                             s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
 
@@ -1011,7 +1028,7 @@ class _HybridPlannerEngine(_PlannerCommon):
                         while step_seq < plan.length:
                             s = plan.ticks[step_seq]
 
-                            pending_pre: Optional[Dict[int, Coord]] = None
+                            pending_pre: dict[int, Coord] | None = None
                             if plan.in_idx is not None and step_seq == plan.in_idx:
                                 pending_pre = {
                                     a_id: self.ctx.current_pos[a_id],
@@ -1021,7 +1038,10 @@ class _HybridPlannerEngine(_PlannerCommon):
                             if plan.out_idx is not None and step_seq == plan.out_idx:
                                 pre_map = self.live_pre_by_pair.get(
                                     pid,
-                                    {a_id: self.ctx.current_pos[a_id], b_id: self.ctx.current_pos[b_id]},
+                                    {
+                                    a_id: self.ctx.current_pos[a_id],
+                                    b_id: self.ctx.current_pos[b_id],
+                                },
                                 )
                                 s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
 
@@ -1069,7 +1089,7 @@ class _HybridPlannerEngine(_PlannerCommon):
                         while step_seq < plan.length:
                             s = plan.ticks[step_seq]
 
-                            pending_pre: Optional[Dict[int, Coord]] = None
+                            pending_pre: dict[int, Coord] | None = None
                             if plan.in_idx is not None and step_seq == plan.in_idx:
                                 pending_pre = {
                                     a: self.ctx.current_pos[a],
@@ -1111,11 +1131,11 @@ class CircleRotationRoutingPlanner:
     @staticmethod
     def route(
         G: nx.Graph,
-        qubits: List[Qubit],
-        pairs: List[Tuple[Qubit, Qubit]],
+        qubits: list[Qubit],
+        pairs: list[tuple[Qubit, Qubit]],
         p_success: float,
         p_repair: float,
-    ):
+    ) -> RoutingResult:
         ctx = _RoutingContext(G, qubits, p_success, p_repair)
         engine = _CirclePlannerEngine(ctx)
         return engine.run(pairs)
@@ -1125,11 +1145,11 @@ class HybridRotationRoutingPlanner(RoutingStrategy):
     def route(
         self,
         G: nx.Graph,
-        qubits: List[Qubit],
-        pairs: List[Tuple[Qubit, Qubit]],
+        qubits: list[Qubit],
+        pairs: list[tuple[Qubit, Qubit]],
         p_success: float,
         p_repair: float,
-    ):
+    ) -> RoutingResult:
         ctx = _RoutingContext(
             G,
             qubits,

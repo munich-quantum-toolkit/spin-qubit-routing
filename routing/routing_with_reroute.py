@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Dict, List, Optional, Set, Tuple
 
 import networkx as nx
 
-from routing.common import Coord, MAX_TIME, Reservations, TimedNode, Qubit
+from routing.common import Coord, MAX_TIME, Qubit, Reservations, TimedNode
 from routing.default_routing import DefaultRoutingPlanner
-from routing.routing_strategy import RoutingStrategy
+from routing.routing_strategy import RoutingResult, RoutingStrategy
 
 MAX_REPLANS = 50
 MAX_GLOBAL_ITERS = 50
@@ -17,25 +16,25 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
     def route(
         self,
         G: nx.Graph,
-        qubits: List[Qubit],
-        pairs: List[Tuple[Qubit, Qubit]],
+        qubits: list[Qubit],
+        pairs: list[tuple[Qubit, Qubit]],
         p_success: float,
         p_repair: float,
-    ):
-        current_pos: Dict[int, Coord] = {q.id: q.pos for q in qubits}
-        all_qids: Set[int] = {q.id for q in qubits}
+    ) -> RoutingResult:
+        current_pos: dict[int, Coord] = {q.id: q.pos for q in qubits}
+        all_qids: set[int] = {q.id for q in qubits}
 
-        defective_edges: Set[frozenset] = set()
-        batch_plans: List[Dict[int, List[TimedNode]]] = []
-        batch_defects: List[Set[frozenset]] = []
+        defective_edges: set[frozenset] = set()
+        batch_plans: list[dict[int, list[TimedNode]]] = []
+        batch_defects: list[set[frozenset]] = []
 
-        total_ins: Set[Coord] = {n for n in G if G.nodes[n].get("type") == "IN"}
-        tried_meetings: Dict[frozenset, Set[Coord]] = {}
+        total_ins: set[Coord] = {n for n in G if G.nodes[n].get("type") == "IN"}
+        tried_meetings: dict[frozenset, set[Coord]] = {}
 
         layers = RerouteRoutingPlanner._build_layers_from_pairs(pairs)
 
         idx = 0
-        replan_counts: Dict[int, int] = {}
+        replan_counts: dict[int, int] = {}
         global_iter = 0
 
         while idx < len(layers):
@@ -49,10 +48,10 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             tried_meetings.clear()
 
             layer_pairs = layers[idx]
-            layer_qids: Set[int] = {x for ab in layer_pairs for x in ab}
-            non_layer_qids: Set[int] = all_qids - layer_qids
-            layer_starts: Set[Coord] = {current_pos[q] for q in layer_qids}
-            occupied_now: Set[Coord] = {current_pos[q] for q in all_qids}
+            layer_qids: set[int] = {x for ab in layer_pairs for x in ab}
+            non_layer_qids: set[int] = all_qids - layer_qids
+            layer_starts: set[Coord] = {current_pos[q] for q in layer_qids}
+            occupied_now: set[Coord] = {current_pos[q] for q in all_qids}
 
             (
                 to_meeting_plans,
@@ -93,7 +92,9 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 idx += 1
                 continue
 
-            F_layer: Set[Coord] = DefaultRoutingPlanner._collect_layer_nodes(to_meeting_plans, fixed_meetings)
+            F_layer: set[Coord] = DefaultRoutingPlanner._collect_layer_nodes(
+                to_meeting_plans, fixed_meetings
+            )
             F_all = set(F_layer) | set(layer_starts)
 
             (
@@ -123,7 +124,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 replan_counts[idx] = replan_counts.get(idx, 0) + 1
                 if replan_counts[idx] > MAX_REPLANS:
                     raise RuntimeError(
-                        f"Kein gültiges Routing für Layer {idx} nach {replan_counts[idx]} Neuplanungen."
+                        f"Kein gültiges Routing für Layer {idx} nach "
+                        f"{replan_counts[idx]} Neuplanungen."
                     )
                 continue
 
@@ -198,10 +200,10 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         return DefaultRoutingPlanner.stitch_batches(qubits, batch_plans, batch_defects)
 
     @staticmethod
-    def _build_layers_from_pairs(pairs: List[Tuple[Qubit, Qubit]]) -> List[List[Tuple[int, int]]]:
-        layers: List[List[Tuple[int, int]]] = []
-        used: Set[int] = set()
-        cur: List[Tuple[int, int]] = []
+    def _build_layers_from_pairs(pairs: list[tuple[Qubit, Qubit]]) -> list[list[tuple[int, int]]]:
+        layers: list[list[tuple[int, int]]] = []
+        used: set[int] = set()
+        cur: list[tuple[int, int]] = []
 
         for qa, qb in pairs:
             a, b = qa.id, qb.id
@@ -220,16 +222,20 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         return layers
 
     @staticmethod
-    def _wait_plan(all_qids: Set[int], current_pos: Dict[int, Coord], ticks: int) -> Dict[int, List[TimedNode]]:
-        wait: Dict[int, List[TimedNode]] = {}
+    def _wait_plan(
+        all_qids: set[int],
+        current_pos: dict[int, Coord],
+        ticks: int,
+    ) -> dict[int, list[TimedNode]]:
+        wait: dict[int, list[TimedNode]] = {}
         for qid in all_qids:
             wait[qid] = [(current_pos[qid], 0), (current_pos[qid], ticks)]
         return wait
 
     @staticmethod
     def _mark_meeting_failed(
-        tried_meetings: Dict[frozenset, Set[Coord]],
-        pair: Tuple[int, int],
+        tried_meetings: dict[frozenset, set[Coord]],
+        pair: tuple[int, int],
         meet: Coord,
     ) -> None:
         key = frozenset(pair)
@@ -237,8 +243,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
     @staticmethod
     def _snapshot_defects(
-        batch_defects: List[Set[frozenset]],
-        defective_edges: Set[frozenset],
+        batch_defects: list[set[frozenset]],
+        defective_edges: set[frozenset],
         n: int,
     ) -> None:
         for _ in range(n):
@@ -247,31 +253,31 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
     @staticmethod
     def _plan_non_layer_evacuation(
         G: nx.Graph,
-        current_pos: Dict[int, Coord],
-        all_qids: Set[int],
-        non_layer_qids: Set[int],
-        layer_pairs: List[Tuple[int, int]],
-        to_meeting_plans: Dict[int, List[TimedNode]],
-        fixed_meetings: Dict[frozenset, Coord],
-        defective_edges: Set[frozenset],
-        occupied_now: Set[Coord],
-        F_all: Set[Coord],
-        F_layer: Set[Coord],
-        tried_meetings: Dict[frozenset, Set[Coord]],
-    ) -> Tuple[
+        current_pos: dict[int, Coord],
+        all_qids: set[int],
+        non_layer_qids: set[int],
+        layer_pairs: list[tuple[int, int]],
+        to_meeting_plans: dict[int, list[TimedNode]],
+        fixed_meetings: dict[frozenset, Coord],
+        defective_edges: set[frozenset],
+        occupied_now: set[Coord],
+        F_all: set[Coord],
+        F_layer: set[Coord],
+        tried_meetings: dict[frozenset, set[Coord]],
+    ) -> tuple[
         bool,
-        Dict[int, List[TimedNode]],
-        Dict[frozenset, Coord],
-        Dict[int, List[TimedNode]],
-        Dict[int, Coord],
-        Dict[int, Tuple[int, int]],
-        Set[Coord],
+        dict[int, list[TimedNode]],
+        dict[frozenset, Coord],
+        dict[int, list[TimedNode]],
+        dict[int, Coord],
+        dict[int, tuple[int, int]],
+        set[Coord],
     ]:
-        blockers_now: List[int] = [qid for qid in non_layer_qids if current_pos[qid] in F_all]
+        blockers_now: list[int] = [qid for qid in non_layer_qids if current_pos[qid] in F_all]
         if not blockers_now:
             return False, to_meeting_plans, fixed_meetings, {}, {}, {}, set()
 
-        node_to_pairs: Dict[Coord, List[Tuple[int, int]]] = {}
+        node_to_pairs: dict[Coord, list[tuple[int, int]]] = {}
         for (a, b) in layer_pairs:
             key = frozenset({a, b})
             if key not in fixed_meetings:
@@ -280,7 +286,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             for n in nodes:
                 node_to_pairs.setdefault(n, []).append((a, b))
 
-        blocker_to_pair: Dict[int, Tuple[int, int]] = {}
+        blocker_to_pair: dict[int, tuple[int, int]] = {}
         for qid in blockers_now:
             pos = current_pos[qid]
             pairs_touching = node_to_pairs.get(pos, [])
@@ -288,7 +294,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 blocker_to_pair[qid] = pairs_touching[0]
 
         avoid_for_targets = set(occupied_now) | F_all
-        evac_targets: Dict[int, Coord] = {}
+        evac_targets: dict[int, Coord] = {}
         for qid in blockers_now:
             tgt = DefaultRoutingPlanner._nearest_free_sn(G, current_pos[qid], avoid_for_targets)
             if tgt is not None and tgt not in F_layer:
@@ -298,7 +304,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         replan_current_layer = False
         cannot_place = [qid for qid in blockers_now if qid not in evac_targets]
         if cannot_place:
-            seen_pairs: Set[frozenset] = set()
+            seen_pairs: set[frozenset] = set()
             for qid in cannot_place:
                 ab = blocker_to_pair.get(qid)
                 if not ab:
@@ -317,9 +323,9 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
         waiter_qids = non_layer_qids - set(evac_targets.keys())
         waiter_nodes = {current_pos[q] for q in waiter_qids}
-        blocked_nodes_evacs: Set[Coord] = set(F_all) | set(waiter_nodes)
+        blocked_nodes_evacs: set[Coord] = set(F_all) | set(waiter_nodes)
 
-        evac_plans: Dict[int, List[TimedNode]] = {}
+        evac_plans: dict[int, list[TimedNode]] = {}
         if evac_targets and not replan_current_layer:
             try:
                 evac_plans = DefaultRoutingPlanner._mapf_to_targets(
@@ -379,24 +385,20 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
     @staticmethod
     def _reroute_or_spill_after_defects(
         G: nx.Graph,
-        current_pos: Dict[int, Coord],
-        layer_pairs: List[Tuple[int, int]],
-        layer_starts: Set[Coord],
-        defective_edges: Set[frozenset],
-        tried_meetings: Dict[frozenset, Set[Coord]],
-        to_meeting_plans: Dict[int, List[TimedNode]],
-        fixed_meetings: Dict[frozenset, Coord],
-        evac_plans: Dict[int, List[TimedNode]],
-        evac_targets: Dict[int, Coord],
-        blocked_nodes_evacs: Set[Coord],
-        blocker_to_pair: Dict[int, Tuple[int, int]],
-        layers: List[List[Tuple[int, int]]],
+        current_pos: dict[int, Coord],
+        layer_pairs: list[tuple[int, int]],
+        layer_starts: set[Coord],
+        defective_edges: set[frozenset],
+        tried_meetings: dict[frozenset, set[Coord]],
+        to_meeting_plans: dict[int, list[TimedNode]],
+        fixed_meetings: dict[frozenset, Coord],
+        evac_plans: dict[int, list[TimedNode]],
+        evac_targets: dict[int, Coord],
+        blocked_nodes_evacs: set[Coord],
+        blocker_to_pair: dict[int, tuple[int, int]],
+        layers: list[list[tuple[int, int]]],
         idx: int,
-    ) -> Tuple[
-        Dict[int, List[TimedNode]],
-        Dict[frozenset, Coord],
-        Dict[int, List[TimedNode]],
-    ]:
+    ) -> tuple[dict[int, list[TimedNode]], dict[frozenset, Coord], dict[int, list[TimedNode]]]:
         if evac_plans:
             broken_movers = {
                 qid
@@ -413,7 +415,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                         blocked_edges=defective_edges,
                     )
                 except RuntimeError:
-                    to_spill_for_nonlayer: Set[Tuple[int, int]] = set()
+                    to_spill_for_nonlayer: set[tuple[int, int]] = set()
                     for qid in broken_movers:
                         ab = blocker_to_pair.get(qid)
                         if ab:
@@ -424,7 +426,9 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                             key = frozenset({a, b})
                             meet = fixed_meetings.get(key)
                             if meet is not None:
-                                RerouteRoutingPlanner._mark_meeting_failed(tried_meetings, (a, b), meet)
+                                RerouteRoutingPlanner._mark_meeting_failed(
+                                    tried_meetings, (a, b), meet
+                                )
                             to_meeting_plans.pop(a, None)
                             to_meeting_plans.pop(b, None)
                             fixed_meetings.pop(key, None)
@@ -473,12 +477,12 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
     @staticmethod
     def _pairs_needing_reroute(
-        layer_pairs: List[Tuple[int, int]],
-        fixed_meetings: Dict[frozenset, Coord],
-        to_meeting_plans: Dict[int, List[TimedNode]],
-        defective_edges: Set[frozenset],
-    ) -> Set[Tuple[int, int]]:
-        need: Set[Tuple[int, int]] = set()
+        layer_pairs: list[tuple[int, int]],
+        fixed_meetings: dict[frozenset, Coord],
+        to_meeting_plans: dict[int, list[TimedNode]],
+        defective_edges: set[frozenset],
+    ) -> set[tuple[int, int]]:
+        need: set[tuple[int, int]] = set()
 
         for (a, b) in layer_pairs:
             key = frozenset({a, b})
@@ -501,19 +505,22 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
             pre_a = cut_a[-1][0]
             pre_b = cut_b[-1][0]
-            if (frozenset({pre_a, meet}) in defective_edges) or (frozenset({pre_b, meet}) in defective_edges):
+            if (
+                frozenset({pre_a, meet}) in defective_edges
+                or frozenset({pre_b, meet}) in defective_edges
+            ):
                 need.add((a, b))
 
         return need
 
     @staticmethod
     def _compute_pre_in_paths(
-        layer_pairs: List[Tuple[int, int]],
-        to_meeting_plans: Dict[int, List[TimedNode]],
-        fixed_meetings: Dict[frozenset, Coord],
-        tried_meetings: Dict[frozenset, Set[Coord]],
-    ) -> Tuple[Dict[int, List[TimedNode]], int]:
-        pre_in_paths: Dict[int, List[TimedNode]] = {}
+        layer_pairs: list[tuple[int, int]],
+        to_meeting_plans: dict[int, list[TimedNode]],
+        fixed_meetings: dict[frozenset, Coord],
+        tried_meetings: dict[frozenset, set[Coord]],
+    ) -> tuple[dict[int, list[TimedNode]], int]:
+        pre_in_paths: dict[int, list[TimedNode]] = {}
         T_pre_sync = 0
 
         for (a, b) in layer_pairs:
@@ -542,27 +549,28 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
     @staticmethod
     def _execute_layer_batches(
-        all_qids: Set[int],
-        layer_pairs: List[Tuple[int, int]],
-        current_pos: Dict[int, Coord],
-        defective_edges: Set[frozenset],
-        batch_plans: List[Dict[int, List[TimedNode]]],
-        batch_defects: List[Set[frozenset]],
-        evac_plans: Dict[int, List[TimedNode]],
-        to_meeting_plans: Dict[int, List[TimedNode]],
-        fixed_meetings: Dict[frozenset, Coord],
+        all_qids: set[int],
+        layer_pairs: list[tuple[int, int]],
+        current_pos: dict[int, Coord],
+        defective_edges: set[frozenset],
+        batch_plans: list[dict[int, list[TimedNode]]],
+        batch_defects: list[set[frozenset]],
+        evac_plans: dict[int, list[TimedNode]],
+        to_meeting_plans: dict[int, list[TimedNode]],
+        fixed_meetings: dict[frozenset, Coord],
         T_pre_sync: int,
-        tried_meetings: Dict[frozenset, Set[Coord]],
-        layers: List[List[Tuple[int, int]]],
+        tried_meetings: dict[frozenset, set[Coord]],
+        layers: list[list[tuple[int, int]]],
         idx: int,
     ) -> None:
         if evac_plans and any(
-            DefaultRoutingPlanner._path_uses_defective_edge(p, defective_edges) for p in evac_plans.values()
+            DefaultRoutingPlanner._path_uses_defective_edge(path, defective_edges)
+            for path in evac_plans.values()
         ):
             evac_plans.clear()
 
         if evac_plans:
-            micro_evacuate: Dict[int, List[TimedNode]] = dict(evac_plans.items())
+            micro_evacuate: dict[int, list[TimedNode]] = dict(evac_plans.items())
             dur = max((p[-1][1] for p in micro_evacuate.values()), default=0)
 
             for qid in (all_qids - set(micro_evacuate.keys())):
@@ -574,8 +582,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             for qid in evac_plans:
                 current_pos[qid] = evac_plans[qid][-1][0]
 
-        micro_to_pre: Dict[int, List[TimedNode]] = {}
-        exec_layer_qids: Set[int] = set()
+        micro_to_pre: dict[int, list[TimedNode]] = {}
+        exec_layer_qids: set[int] = set()
 
         for (a, b) in layer_pairs:
             key = frozenset({a, b})
@@ -583,8 +591,12 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 continue
 
             meet = fixed_meetings[key]
-            cut_a = DefaultRoutingPlanner._retime_until_pre_in_wait(to_meeting_plans[a], meet, T_pre_sync)
-            cut_b = DefaultRoutingPlanner._retime_until_pre_in_wait(to_meeting_plans[b], meet, T_pre_sync)
+            cut_a = DefaultRoutingPlanner._retime_until_pre_in_wait(
+                to_meeting_plans[a], meet, T_pre_sync
+            )
+            cut_b = DefaultRoutingPlanner._retime_until_pre_in_wait(
+                to_meeting_plans[b], meet, T_pre_sync
+            )
 
             if cut_a is None or cut_b is None:
                 RerouteRoutingPlanner._mark_meeting_failed(tried_meetings, (a, b), meet)
@@ -607,8 +619,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         for qid in exec_layer_qids:
             current_pos[qid] = micro_to_pre[qid][-1][0]
 
-        micro_in: Dict[int, List[TimedNode]] = {}
-        spill_after_micro: List[Tuple[int, int]] = []
+        micro_in: dict[int, list[TimedNode]] = {}
+        spill_after_micro: list[tuple[int, int]] = []
 
         for (a, b) in layer_pairs:
             key = frozenset({a, b})
@@ -619,7 +631,10 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             pre_a = current_pos[a]
             pre_b = current_pos[b]
 
-            if (frozenset({pre_a, meet}) in defective_edges) or (frozenset({pre_b, meet}) in defective_edges):
+            if (
+                frozenset({pre_a, meet}) in defective_edges
+                or frozenset({pre_b, meet}) in defective_edges
+            ):
                 spill_after_micro.append((a, b))
                 micro_in[a] = [(pre_a, 0), (pre_a, 2)]
                 micro_in[b] = [(pre_b, 0), (pre_b, 2)]
@@ -650,8 +665,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
     @staticmethod
     def _reserve_existing_plans(
         res: Reservations,
-        plans: Dict[int, List[TimedNode]],
-        skip_qids: Optional[Set[int]] = None,
+        plans: dict[int, list[TimedNode]],
+        skip_qids: set[int] | None = None,
     ) -> None:
         skip_qids = skip_qids or set()
         for qid, path in plans.items():
@@ -664,8 +679,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         G: nx.Graph,
         u: Coord,
         v: Coord,
-        banned_nodes: Optional[Set[Coord]] = None,
-    ) -> List[Coord]:
+        banned_nodes: set[Coord] | None = None,
+    ) -> list[Coord]:
         banned_nodes = banned_nodes or set()
         Nu = set(G.neighbors(u))
         Nv = set(G.neighbors(v))
@@ -677,16 +692,16 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
     @staticmethod
     def _patch_path_with_triangle_bypass(
         G: nx.Graph,
-        path: List[TimedNode],
-        defective_edges: Set[frozenset],
-        blocked_nodes_static: Optional[Set[Coord]] = None,
-    ) -> List[TimedNode]:
+        path: list[TimedNode],
+        defective_edges: set[frozenset],
+        blocked_nodes_static: set[Coord] | None = None,
+    ) -> list[TimedNode]:
         if not path or len(path) < 2:
             return path
 
         blocked_nodes_static = blocked_nodes_static or set()
 
-        new_path: List[TimedNode] = [path[0]]
+        new_path: list[TimedNode] = [path[0]]
         total_extra = 0
 
         for i in range(1, len(path)):
@@ -702,7 +717,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 G, u, v, banned_nodes=blocked_nodes_static
             )
 
-            picked_w: Optional[Coord] = None
+            picked_w: Coord | None = None
             for w in candidates:
                 if frozenset({u, w}) in defective_edges:
                     continue
@@ -724,33 +739,37 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
     @staticmethod
     def _try_local_triangle_bypass_for_pairs(
         G: nx.Graph,
-        current_pos: Dict[int, Coord],
-        layer_pairs: List[Tuple[int, int]],
-        fixed_meetings: Dict[frozenset, Coord],
-        keep_pairs: Set[Tuple[int, int]],
-        defective_edges: Set[frozenset],
-        layer_starts: Set[Coord],
-        existing_layer_plans: Optional[Dict[int, List[TimedNode]]],
-        existing_evac_plans: Optional[Dict[int, List[TimedNode]]],
-    ) -> Tuple[Set[Tuple[int, int]], Dict[int, List[TimedNode]]]:
-        ok_pairs: Set[Tuple[int, int]] = set()
-        new_plans: Dict[int, List[TimedNode]] = {}
+        current_pos: dict[int, Coord],
+        layer_pairs: list[tuple[int, int]],
+        fixed_meetings: dict[frozenset, Coord],
+        keep_pairs: set[tuple[int, int]],
+        defective_edges: set[frozenset],
+        layer_starts: set[Coord],
+        existing_layer_plans: dict[int, list[TimedNode]] | None,
+        existing_evac_plans: dict[int, list[TimedNode]] | None,
+    ) -> tuple[set[tuple[int, int]], dict[int, list[TimedNode]]]:
+        ok_pairs: set[tuple[int, int]] = set()
+        new_plans: dict[int, list[TimedNode]] = {}
 
         res_base = Reservations(G, blocked_edges=defective_edges)
 
-        skip_qids: Set[int] = {q for ab in keep_pairs for q in ab}
+        skip_qids: set[int] = {q for ab in keep_pairs for q in ab}
         if existing_layer_plans:
-            RerouteRoutingPlanner._reserve_existing_plans(res_base, existing_layer_plans, skip_qids=skip_qids)
+            RerouteRoutingPlanner._reserve_existing_plans(
+                res_base, existing_layer_plans, skip_qids=skip_qids
+            )
         if existing_evac_plans:
-            RerouteRoutingPlanner._reserve_existing_plans(res_base, existing_evac_plans, skip_qids=None)
+            RerouteRoutingPlanner._reserve_existing_plans(
+                res_base, existing_evac_plans, skip_qids=None
+            )
 
-        moving_qids: Set[int] = set()
+        moving_qids: set[int] = set()
         if existing_layer_plans:
             moving_qids |= set(existing_layer_plans.keys())
         if existing_evac_plans:
             moving_qids |= set(existing_evac_plans.keys())
 
-        stationary_nodes: Set[Coord] = {
+        stationary_nodes: set[Coord] = {
             current_pos[qid]
             for qid in current_pos.keys()
             if (qid not in moving_qids) and (qid not in skip_qids)
@@ -762,7 +781,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         for node in stationary_nodes:
             Reservations.commit(res_base, [(node, 0), (node, MAX_TIME)])
 
-        placed_preins: Set[Coord] = set()
+        placed_preins: set[Coord] = set()
         if existing_layer_plans:
             for pair_key, meet in fixed_meetings.items():
                 a, b = list(pair_key)
@@ -780,7 +799,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 for t in range(0, MAX_TIME + 1):
                     res_base.node_caps[pin][t] = cap
 
-        evac_target_nodes: Set[Coord] = set()
+        evac_target_nodes: set[Coord] = set()
         if existing_evac_plans:
             for p in existing_evac_plans.values():
                 if p:
@@ -790,7 +809,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             for t in range(0, MAX_TIME + 1):
                 res_base.node_caps[node][t] = cap
 
-        blocked_nodes_static: Set[Coord] = set(stationary_nodes)
+        blocked_nodes_static: set[Coord] = set(stationary_nodes)
 
         def md(a: Coord, b: Coord) -> int:
             return abs(a[0] - b[0]) + abs(a[1] - b[1])

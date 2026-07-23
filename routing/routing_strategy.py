@@ -1,21 +1,30 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Dict, Set
+from typing import TypeAlias
 
 import networkx as nx
 
-from routing.common import Qubit, TimedNode
+from routing.common import Coord, Qubit, TimedNode
+
+
+QubitPair: TypeAlias = tuple[Qubit, Qubit]
+DefectiveEdge: TypeAlias = frozenset[Coord]
+DefectTimeBand: TypeAlias = tuple[int, int, set[DefectiveEdge]]
+RoutingResult: TypeAlias = tuple[
+    dict[int, list[TimedNode]],
+    list[DefectTimeBand],
+]
 
 
 class RoutingStrategy(ABC):
-
     @abstractmethod
     def route(
         self,
         G: nx.Graph,
-        qubits: List[Qubit],
-        pairs: List[Tuple[Qubit, Qubit]],
+        qubits: list[Qubit],
+        pairs: list[QubitPair],
         p_success: float,
         p_repair: float,
-    ) -> Tuple[Dict[int, List[TimedNode]], List[Tuple[int, int, Set[frozenset]]]]:
-        pass
+    ) -> RoutingResult:
+        ...

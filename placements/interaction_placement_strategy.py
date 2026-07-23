@@ -1,27 +1,26 @@
-# placements/interaction_placement_strategy.py
 from __future__ import annotations
 
-from typing import List, Tuple, Optional, Dict
 import random
+from typing import Final
 
 import networkx as nx
 
 from placements.placement_strategy import PlacementStrategy
 
 
-DECAY = 0.9
+DECAY: Final = 0.9
 
 
 class InteractionPlacementStrategy(PlacementStrategy):
+    _last_pair_ids: list[tuple[int, int]] | None = None
 
     def build_pairs(
         self,
         n_qubits: int,
         rounds: int,
-        max_pairs_per_round: Optional[int] = None,
-        seed: Optional[int] = None,
-    ) -> List[Tuple[int, int]]:
-
+        max_pairs_per_round: int | None = None,
+        seed: int | None = None,
+    ) -> list[tuple[int, int]]:
         pair_ids = super().build_pairs(
             n_qubits=n_qubits,
             rounds=rounds,
@@ -33,47 +32,61 @@ class InteractionPlacementStrategy(PlacementStrategy):
 
     def place_qubits(
         self,
-        sn_nodes: List[Tuple[int, int]],
+        sn_nodes: list[tuple[int, int]],
         n_qubits: int,
-        seed: Optional[int] = None,
-    ) -> List[Tuple[int, int]]:
-
+        seed: int | None = None,
+    ) -> list[tuple[int, int]]:
         if self._last_pair_ids is None:
-            rng = random.Random(seed)
-            return rng.sample(sn_nodes, n_qubits)
+            return random.Random(seed).sample(sn_nodes, n_qubits)
 
-        pair_ids = self._last_pair_ids
-        interaction_weights: Dict[Tuple[int, int], float] = {}
+        interaction_weights: dict[tuple[int, int], float] = {}
 
-        for idx, (a, b) in enumerate(pair_ids):
-            if a == b:
+        for index, (first_id, second_id) in enumerate(self._last_pair_ids):
+            if first_id == second_id:
                 continue
-            i, j = sorted((a, b))
-            w = DECAY**idx
-            interaction_weights[(i, j)] = interaction_weights.get((i, j), 0.0) + w
 
-        H = nx.Graph()
-        H.add_nodes_from(range(n_qubits))
+            interaction = tuple(sorted((first_id, second_id)))
+            weight = DECAY**index
 
-        for (i, j), w in interaction_weights.items():
-            H.add_edge(i, j, weight=w)
-
-        pos = nx.spring_layout(H, weight="weight", seed=seed)
-
-        def get_pos(i: int) -> Tuple[float, float]:
-            return tuple(pos.get(i, (0.0, 0.0)))
-
-        qubit_order = sorted(range(n_qubits), key=lambda i: get_pos(i))
-        sn_nodes_sorted = sorted(sn_nodes, key=lambda xy: (xy[0], xy[1]))
-
-        if n_qubits > len(sn_nodes_sorted):
-            raise ValueError(
-                f"n_qubits={n_qubits} exceeds available SN nodes ({len(sn_nodes_sorted)})."
+            interaction_weights[interaction] = (
+                interaction_weights.get(interaction, 0.0) + weight
             )
 
-        coords_for_id: List[Optional[Tuple[int, int]]] = [None] * n_qubits
+        interaction_graph = nx.Graph()
+        interaction_graph.add_nodes_from(range(n_qubits))
 
-        for k, qubit_id in enumerate(qubit_order[:n_qubits]):
-            coords_for_id[qubit_id] = sn_nodes_sorted[k]
+        for (first_id, second_id), weight in interaction_weights.items():
+            interaction_graph.add_edge(
+                first_id,
+                second_id,
+                weight=weight,
+            )
 
-        return [coords_for_id[i] for i in range(n_qubits)]
+        positions = nx.spring_layout(
+            interaction_graph,
+            weight="weight",
+            seed=seed,
+        )
+
+        def position_key(qubit_id: int) -> tuple[float, float]:
+            x, y = positions.get(qubit_id, (0.0, 0.0))
+            return float(x), float(y)
+
+        qubit_order = sorted(range(n_qubits), key=position_key)
+        sorted_sn_nodes = sorted(sn_nodes, key=lambda coordinate: coordinate)
+
+        if n_qubits > len(sorted_sn_nodes):
+            raise ValueError(
+                f"n_qubits={n_qubits} exceeds available SN nodes "
+                f"({len(sorted_sn_nodes)})."
+            )
+
+        coordinates_by_qubit_id = {
+            qubit_id: sorted_sn_nodes[index]
+            for index, qubit_id in enumerate(qubit_order)
+        }
+
+        return [
+            coordinates_by_qubit_id[qubit_id]
+            for qubit_id in range(n_qubits)
+        ]

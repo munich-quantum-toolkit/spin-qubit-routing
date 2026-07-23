@@ -1,42 +1,87 @@
+from __future__ import annotations
+
+from typing import Final, TypeAlias
+
 import networkx as nx
 
 
+Coord: TypeAlias = tuple[int, int]
+
+_TILE_POSITIONS: Final[dict[int, Coord]] = {
+    0: (-1, 1),
+    1: (0, 1),
+    2: (1, 1),
+    3: (-1, 0),
+    4: (1, 0),
+    5: (-1, -1),
+    6: (0, -1),
+    7: (1, -1),
+}
+
+_INTERACTION_NODE_IDS: Final[frozenset[int]] = frozenset(
+    {0, 2, 5, 7}
+)
+
+
 class NetworkBuilder:
-
     @staticmethod
-    def build_network(width: int, height: int) -> nx.Graph:
-        if not (isinstance(width, int) and isinstance(height, int) and width >= 1 and height >= 1):
-            raise ValueError("width and height must be integers >= 1")
+    def build_network(
+        width: int,
+        height: int,
+    ) -> nx.Graph:
+        if not (
+            isinstance(width, int)
+            and isinstance(height, int)
+            and width >= 1
+            and height >= 1
+        ):
+            raise ValueError(
+                "width and height must be integers >= 1"
+            )
 
-        # Single-tile template (no center)
-        template_pos = {
-            0: (-1,  1), 1: (0, 1),  2: (1, 1),
-            3: (-1,  0),             4: (1, 0),
-            5: (-1, -1), 6: (0, -1), 7: (1, -1),
-        }
-        corners = {0, 2, 5, 7}
+        graph = nx.Graph()
 
-        G = nx.Graph()
+        for row in range(height):
+            for column in range(width):
+                x_offset = 2 * column
+                y_offset = -2 * row
 
-        # Place tiles in a width x height grid
-        for j in range(height):         
-            for i in range(width):      
-                dx, dy = 2 * i, -2 * j  
-                for t_id, (x, y) in template_pos.items():
-                    coord = (x + dx, y + dy)
-                    if coord not in G:
-                        G.add_node(coord, type=("IN" if t_id in corners else "SN"))
+                for tile_id, (x, y) in _TILE_POSITIONS.items():
+                    coordinate = (
+                        x + x_offset,
+                        y + y_offset,
+                    )
 
-        # Connect 8-neighborhood across the entire tiled grid
-        coords = list(G.nodes())
-        coord_set = set(coords)
-        for (x, y) in coords:
-            for ddx in (-1, 0, 1):
-                for ddy in (-1, 0, 1):
-                    if ddx == 0 and ddy == 0:
+                    if coordinate in graph:
                         continue
-                    v = (x + ddx, y + ddy)
-                    if v in coord_set:
-                        G.add_edge((x, y), v)
 
-        return G
+                    node_type = (
+                        "IN"
+                        if tile_id in _INTERACTION_NODE_IDS
+                        else "SN"
+                    )
+                    graph.add_node(
+                        coordinate,
+                        type=node_type,
+                    )
+
+        coordinates = list(graph.nodes)
+        coordinate_set = set(coordinates)
+
+        for x, y in coordinates:
+            source = (x, y)
+
+            for x_delta in (-1, 0, 1):
+                for y_delta in (-1, 0, 1):
+                    if x_delta == 0 and y_delta == 0:
+                        continue
+
+                    target = (
+                        x + x_delta,
+                        y + y_delta,
+                    )
+
+                    if target in coordinate_set:
+                        graph.add_edge(source, target)
+
+        return graph

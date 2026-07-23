@@ -30,7 +30,6 @@ class RoutingSimulator:
         self.config = config
 
     def run(self):
-        # 1) Network + Qubits + Pairs
         G, qubits, pairs = self.placement_strategy.build_network_and_place(
             width=self.config.width,
             height=self.config.height,

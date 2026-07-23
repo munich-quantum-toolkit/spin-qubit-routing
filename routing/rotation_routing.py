@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple
 
 import networkx as nx
 
-from routing.common import Coord, TimedNode, Qubit
+from routing.common import Coord, Qubit, TimedNode
 from routing.default_routing import DefaultRoutingPlanner
-from routing.routing_strategy import RoutingStrategy
+from routing.routing_strategy import RoutingResult, RoutingStrategy
 
 MAX_WAIT_TIME = 100
 
@@ -17,24 +16,27 @@ class RotationRoutingPlanner(RoutingStrategy):
     def route(
         self,
         G: nx.Graph,
-        qubits: List[Qubit],
-        pairs: List[Tuple[Qubit, Qubit]],
+        qubits: list[Qubit],
+        pairs: list[tuple[Qubit, Qubit]],
         p_success: float,
         p_repair: float,
-    ):
+    ) -> RoutingResult:
         rt = RouteRuntime(G, qubits, p_success, p_repair)
 
-        live_pre_by_pair: Dict[Tuple[int, int], Dict[int, Coord]] = {}
-        pair_order: Dict[Tuple[int, int], int] = {(qa.id, qb.id): i for i, (qa, qb) in enumerate(pairs)}
-        remaining: Set[Tuple[int, int]] = {(qa.id, qb.id) for qa, qb in pairs}
+        live_pre_by_pair: dict[tuple[int, int], dict[int, Coord]] = {}
+        pair_order: dict[tuple[int, int], int] = {
+            (qa.id, qb.id): index
+            for index, (qa, qb) in enumerate(pairs)
+        }
+        remaining: set[tuple[int, int]] = {(qa.id, qb.id) for qa, qb in pairs}
 
         while remaining:
             ready = [pid for pid in remaining if is_ready_pair(pid, remaining, pair_order)]
             if not ready:
                 ready = list(remaining)
 
-            plans: Dict[Tuple[int, int], SoloPlan] = {}
-            sequential_fallback: List[Tuple[int, int]] = []
+            plans: dict[tuple[int, int], SoloPlan] = {}
+            sequential_fallback: list[tuple[int, int]] = []
 
             for pid in sorted(ready, key=lambda p: pair_order[p]):
                 a, b = pid
@@ -52,16 +54,16 @@ class RotationRoutingPlanner(RoutingStrategy):
             finished = False
 
             for grp in groups:
-                group_qids: Set[int] = {x for ab in grp for x in ab}
+                group_qids: set[int] = {x for ab in grp for x in ab}
                 L = max(plans[pid].length for pid in grp) if grp else 0
 
                 parallel_failed = False
                 step = 0
                 while step < L:
-                    updates_pair_only: Dict[int, Coord] = {}
-                    sample_flags: List[bool] = []
-                    step_diamonds: List[Tuple[List[Coord], int]] = []
-                    pending_live_pre: Dict[Tuple[int, int], Dict[int, Coord]] = {}
+                    updates_pair_only: dict[int, Coord] = {}
+                    sample_flags: list[bool] = []
+                    step_diamonds: list[tuple[list[Coord], int]] = []
+                    pending_live_pre: dict[tuple[int, int], dict[int, Coord]] = {}
 
                     for pid in grp:
                         plan = plans[pid]
@@ -69,11 +71,20 @@ class RotationRoutingPlanner(RoutingStrategy):
 
                         if plan.in_idx is not None and step == plan.in_idx:
                             a_id, b_id = pid
-                            pending_live_pre[pid] = {a_id: rt.current_pos[a_id], b_id: rt.current_pos[b_id]}
+                            pending_live_pre[pid] = {
+                                a_id: rt.current_pos[a_id],
+                                b_id: rt.current_pos[b_id],
+                            }
 
                         if plan.out_idx is not None and step == plan.out_idx:
                             a_id, b_id = pid
-                            pre_map = live_pre_by_pair.get(pid, {a_id: rt.current_pos[a_id], b_id: rt.current_pos[b_id]})
+                            pre_map = live_pre_by_pair.get(
+                                pid,
+                                {
+                                    a_id: rt.current_pos[a_id],
+                                    b_id: rt.current_pos[b_id],
+                                },
+                            )
                             s = SoloStep({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
 
                         if set(updates_pair_only.keys()) & set(s.updates_pair_only.keys()):
@@ -87,11 +98,17 @@ class RotationRoutingPlanner(RoutingStrategy):
                     if parallel_failed:
                         break
 
-                    if foreign_qubits_on_any_diamond(rt.current_pos, step_diamonds, allowed=group_qids):
+                    if foreign_qubits_on_any_diamond(
+                        rt.current_pos,
+                        step_diamonds,
+                        allowed=group_qids,
+                    ):
                         parallel_failed = True
                         break
 
-                    updates = expand_runtime_rotations(rt.current_pos, updates_pair_only, step_diamonds)
+                    updates = expand_runtime_rotations(
+                        rt.current_pos, updates_pair_only, step_diamonds
+                    )
                     do_sample = False not in sample_flags
 
                     moved = rt.commit_tick(updates, sample=do_sample)
@@ -109,16 +126,27 @@ class RotationRoutingPlanner(RoutingStrategy):
                         step = 0
                         while step < plan.length:
                             s = plan.ticks[step]
-                            pending_pre: Optional[Dict[int, Coord]] = None
+                            pending_pre: dict[int, Coord] | None = None
 
                             if plan.in_idx is not None and step == plan.in_idx:
-                                pending_pre = {a_id: rt.current_pos[a_id], b_id: rt.current_pos[b_id]}
+                                pending_pre = {
+                                    a_id: rt.current_pos[a_id],
+                                    b_id: rt.current_pos[b_id],
+                                }
 
                             if plan.out_idx is not None and step == plan.out_idx:
-                                pre_map = live_pre_by_pair.get(pid, {a_id: rt.current_pos[a_id], b_id: rt.current_pos[b_id]})
+                                pre_map = live_pre_by_pair.get(
+                                pid,
+                                {
+                                    a_id: rt.current_pos[a_id],
+                                    b_id: rt.current_pos[b_id],
+                                },
+                            )
                                 s = SoloStep({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
 
-                            updates = expand_runtime_rotations(rt.current_pos, s.updates_pair_only, s.diamonds)
+                            updates = expand_runtime_rotations(
+                                rt.current_pos, s.updates_pair_only, s.diamonds
+                            )
                             moved = rt.commit_tick(updates, sample=s.sample)
                             if moved:
                                 if pending_pre is not None:
@@ -147,16 +175,21 @@ class RotationRoutingPlanner(RoutingStrategy):
                     step = 0
                     while step < plan.length:
                         s = plan.ticks[step]
-                        pending_pre: Optional[Dict[int, Coord]] = None
+                        pending_pre: dict[int, Coord] | None = None
 
                         if plan.in_idx is not None and step == plan.in_idx:
                             pending_pre = {a: rt.current_pos[a], b: rt.current_pos[b]}
 
                         if plan.out_idx is not None and step == plan.out_idx:
-                            pre_map = live_pre_by_pair.get(pid, {a: rt.current_pos[a], b: rt.current_pos[b]})
+                            pre_map = live_pre_by_pair.get(
+                                pid,
+                                {a: rt.current_pos[a], b: rt.current_pos[b]},
+                            )
                             s = SoloStep({a: pre_map[a], b: pre_map[b]}, False, [])
 
-                        updates = expand_runtime_rotations(rt.current_pos, s.updates_pair_only, s.diamonds)
+                        updates = expand_runtime_rotations(
+                            rt.current_pos, s.updates_pair_only, s.diamonds
+                        )
                         moved = rt.commit_tick(updates, sample=s.sample)
                         if moved:
                             if pending_pre is not None:
@@ -171,23 +204,26 @@ class RotationRoutingPlanner(RoutingStrategy):
 
         return rt.timelines, rt.edge_timebands
 
-    def _plan_pair_solo(self, rt: RouteRuntime, a_id: int, b_id: int) -> Optional[SoloPlan]:
+    def _plan_pair_solo(self, rt: RouteRuntime, a_id: int, b_id: int) -> SoloPlan | None:
         la = rt.current_pos[a_id]
         lb = rt.current_pos[b_id]
         if not (is_sn(rt.G, la) and is_sn(rt.G, lb)):
             return None
 
-        ticks: List[SoloStep] = []
-        trace: Dict[int, List[Coord]] = {a_id: [la], b_id: [lb]}
-        used_diamonds: Set[Tuple[Coord, Coord, Coord, Coord]] = set()
-        in_idx: Optional[int] = None
-        out_idx: Optional[int] = None
+        ticks: list[SoloStep] = []
+        trace: dict[int, list[Coord]] = {a_id: [la], b_id: [lb]}
+        used_diamonds: set[tuple[Coord, Coord, Coord, Coord]] = set()
+        in_idx: int | None = None
+        out_idx: int | None = None
 
         cands = DefaultRoutingPlanner._best_meeting_candidates(
             rt.G, la, lb, reserved=set(), forbidden_nodes=set()
         )
 
-        best_choice: Optional[Tuple[Coord, Tuple[Coord, List[Coord]], Tuple[Coord, List[Coord]]]] = None
+        best_choice: (
+            tuple[Coord, tuple[Coord, list[Coord]], tuple[Coord, list[Coord]]]
+            | None
+        ) = None
         for meet in cands:
             if not is_in(rt.G, meet):
                 continue
@@ -206,8 +242,8 @@ class RotationRoutingPlanner(RoutingStrategy):
         idxB = 0
 
         while la != preA or lb != preB:
-            updates: Dict[int, Coord] = {}
-            diamonds_for_step: List[Tuple[List[Coord], int]] = []
+            updates: dict[int, Coord] = {}
+            diamonds_for_step: list[tuple[list[Coord], int]] = []
 
             if la != preA and idxA + 1 < len(pathA):
                 uA, vA = pathA[idxA], pathA[idxA + 1]
@@ -215,7 +251,9 @@ class RotationRoutingPlanner(RoutingStrategy):
                     dA = diamond_for_edge(rt.G, uA, vA)
                     if dA:
                         dirA = rot_dir(dA, uA, vA)
-                        updA = compute_pair_rotation_updates_for_diamond(dA, dirA, a_id, b_id, la, lb)
+                        updA = compute_pair_rotation_updates_for_diamond(
+                            dA, dirA, a_id, b_id, la, lb
+                        )
                         updA[a_id] = vA
                         updates.update(updA)
                         diamonds_for_step.append((dA, dirA))
@@ -231,9 +269,15 @@ class RotationRoutingPlanner(RoutingStrategy):
                     dB = diamond_for_edge(rt.G, uB, vB)
                     if dB:
                         dirB = rot_dir(dB, uB, vB)
-                        updB = compute_pair_rotation_updates_for_diamond(dB, dirB, a_id, b_id, la, lb)
+                        updB = compute_pair_rotation_updates_for_diamond(
+                            dB, dirB, a_id, b_id, la, lb
+                        )
                         updB[b_id] = vB
-                        if not (diamonds_for_step and set(diamonds_for_step[0][0]).intersection(dB)):
+                        overlaps_existing = (
+                            diamonds_for_step
+                            and set(diamonds_for_step[0][0]).intersection(dB)
+                        )
+                        if not overlaps_existing:
                             updates.update(updB)
                             diamonds_for_step.append((dB, dirB))
                             used_diamonds.add(canonical_diamond_tuple(dB))
@@ -254,11 +298,17 @@ class RotationRoutingPlanner(RoutingStrategy):
             if b_id in updates:
                 idxB = min(idxB + 1, len(pathB) - 1)
 
-            ticks.append(SoloStep(updates_pair_only=updates, sample=True, diamonds=diamonds_for_step))
+            ticks.append(
+                SoloStep(
+                    updates_pair_only=updates,
+                    sample=True,
+                    diamonds=diamonds_for_step,
+                )
+            )
             trace[a_id].append(la)
             trace[b_id].append(lb)
 
-        updates_in: Dict[int, Coord] = {}
+        updates_in: dict[int, Coord] = {}
         if la != meet:
             updates_in[a_id] = meet
         if lb != meet:
@@ -277,10 +327,21 @@ class RotationRoutingPlanner(RoutingStrategy):
         trace[a_id].append(preA)
         trace[b_id].append(preB)
 
-        return SoloPlan(ticks=ticks, pos_trace=trace, used_diamonds=used_diamonds, in_idx=in_idx, out_idx=out_idx)
+        return SoloPlan(
+            ticks=ticks,
+            pos_trace=trace,
+            used_diamonds=used_diamonds,
+            in_idx=in_idx,
+            out_idx=out_idx,
+        )
 
-    def _best_pre(self, rt: RouteRuntime, meet: Coord, src: Coord) -> Optional[Tuple[Coord, List[Coord]]]:
-        best: Optional[Tuple[Coord, List[Coord]]] = None
+    def _best_pre(
+        self,
+        rt: RouteRuntime,
+        meet: Coord,
+        src: Coord,
+    ) -> tuple[Coord, list[Coord]] | None:
+        best: tuple[Coord, list[Coord]] | None = None
         for pre in sn_neighbors_of_meet(rt.G, meet):
             p = shortest_path_sn(rt.SN, src, pre)
             if p is None:
@@ -310,17 +371,17 @@ def is_diag(u: Coord, v: Coord) -> bool:
     return abs(u[0] - v[0]) == 1 and abs(u[1] - v[1]) == 1
 
 
-def canonical_diamond_tuple(D: List[Coord]) -> Tuple[Coord, Coord, Coord, Coord]:
-    return tuple(sorted(D))  # type: ignore[return-value]
+def canonical_diamond_tuple(diamond: list[Coord]) -> tuple[Coord, ...]:
+    return tuple(sorted(diamond))
 
 
-def diag_sn_neighbors(G: nx.Graph, n: Coord) -> List[Coord]:
+def diag_sn_neighbors(G: nx.Graph, n: Coord) -> list[Coord]:
     if not is_sn(G, n):
         return []
     return [w for w in G.neighbors(n) if is_sn(G, w) and is_diag(n, w)]
 
 
-def diamond_for_edge(G: nx.Graph, u: Coord, v: Coord) -> Optional[List[Coord]]:
+def diamond_for_edge(G: nx.Graph, u: Coord, v: Coord) -> list[Coord] | None:
     if not (is_sn(G, u) and is_sn(G, v) and is_diag(u, v)):
         return None
     su = [w for w in diag_sn_neighbors(G, u) if w != v]
@@ -332,18 +393,18 @@ def diamond_for_edge(G: nx.Graph, u: Coord, v: Coord) -> Optional[List[Coord]]:
     return None
 
 
-def rot_dir(diamond: List[Coord], u: Coord, v: Coord) -> int:
+def rot_dir(diamond: list[Coord], u: Coord, v: Coord) -> int:
     i = diamond.index(u)
     return 1 if diamond[(i + 1) % 4] == v else -1
 
 
-def sn_neighbors_of_meet(G: nx.Graph, meeting: Coord) -> List[Coord]:
+def sn_neighbors_of_meet(G: nx.Graph, meeting: Coord) -> list[Coord]:
     if not is_in(G, meeting):
         return []
     return [w for w in G.neighbors(meeting) if is_sn(G, w)]
 
 
-def shortest_path_sn(SN: nx.Graph, src: Coord, dst: Coord) -> Optional[List[Coord]]:
+def shortest_path_sn(SN: nx.Graph, src: Coord, dst: Coord) -> list[Coord] | None:
     try:
         return nx.shortest_path(SN, src, dst)
     except nx.NetworkXNoPath:
@@ -351,15 +412,15 @@ def shortest_path_sn(SN: nx.Graph, src: Coord, dst: Coord) -> Optional[List[Coor
 
 
 def compute_pair_rotation_updates_for_diamond(
-    diamond: List[Coord],
+    diamond: list[Coord],
     direction: int,
     a_id: int,
     b_id: int,
     la: Coord,
     lb: Coord,
-) -> Dict[int, Coord]:
+) -> dict[int, Coord]:
     idx = {p: i for i, p in enumerate(diamond)}
-    out: Dict[int, Coord] = {}
+    out: dict[int, Coord] = {}
     if la in idx:
         out[a_id] = diamond[(idx[la] + direction) % 4]
     if lb in idx:
@@ -368,16 +429,16 @@ def compute_pair_rotation_updates_for_diamond(
 
 
 def plans_compatible_distance(
-    p1: "SoloPlan",
-    ab1: Tuple[int, int],
-    p2: "SoloPlan",
-    ab2: Tuple[int, int],
+    p1: 'SoloPlan',
+    ab1: tuple[int, int],
+    p2: 'SoloPlan',
+    ab2: tuple[int, int],
 ) -> bool:
     a1, b1 = ab1
     a2, b2 = ab2
     L = max(p1.length, p2.length)
 
-    def pos(plan: "SoloPlan", qid: int, i: int) -> Coord:
+    def pos(plan: 'SoloPlan', qid: int, i: int) -> Coord:
         trace = plan.pos_trace[qid]
         return trace[i] if i < len(trace) else trace[-1]
 
@@ -393,7 +454,7 @@ def plans_compatible_distance(
     return True
 
 
-def plans_compatible_diamonds(p1: "SoloPlan", p2: "SoloPlan") -> bool:
+def plans_compatible_diamonds(p1: 'SoloPlan', p2: 'SoloPlan') -> bool:
     L = max(p1.length, p2.length)
     for i in range(L):
         d1 = (
@@ -411,10 +472,10 @@ def plans_compatible_diamonds(p1: "SoloPlan", p2: "SoloPlan") -> bool:
     return True
 
 
-def group_parallel(plans: Dict[Tuple[int, int], "SoloPlan"]) -> List[List[Tuple[int, int]]]:
+def group_parallel(plans: dict[tuple[int, int], 'SoloPlan']) -> list[list[tuple[int, int]]]:
     remaining = sorted(plans.keys())
-    groups: List[List[Tuple[int, int]]] = []
-    used: Set[Tuple[int, int]] = set()
+    groups: list[list[tuple[int, int]]] = []
+    used: set[tuple[int, int]] = set()
 
     for pid in remaining:
         if pid in used:
@@ -438,42 +499,42 @@ def group_parallel(plans: Dict[Tuple[int, int], "SoloPlan"]) -> List[List[Tuple[
 
 
 def expand_runtime_rotations(
-    current_pos: Dict[int, Coord],
-    base_updates: Dict[int, Coord],
-    diamonds: List[Tuple[List[Coord], int]],
-    exclude_qids: Optional[Set[int]] = None,
-) -> Dict[int, Coord]:
+    current_pos: dict[int, Coord],
+    base_updates: dict[int, Coord],
+    diamonds: list[tuple[list[Coord], int]],
+    exclude_qids: set[int] | None = None,
+) -> dict[int, Coord]:
     if not diamonds:
         return dict(base_updates)
 
     exclude_qids = exclude_qids or set()
-    idx_cache: Dict[Tuple[Coord, Coord, Coord, Coord], Dict[Coord, int]] = {}
+    idx_cache: dict[tuple[Coord, ...], dict[Coord, int]] = {}
     out = dict(base_updates)
 
-    for D, direction in diamonds:
-        key = tuple(D)  # type: ignore[assignment]
+    for diamond, direction in diamonds:
+        key = tuple(diamond)
         if key not in idx_cache:
-            idx_cache[key] = {p: i for i, p in enumerate(D)}
+            idx_cache[key] = {p: i for i, p in enumerate(diamond)}
         idx = idx_cache[key]
         for qid, pos in current_pos.items():
             if qid in exclude_qids:
                 continue
             if pos in idx:
-                out[qid] = D[(idx[pos] + direction) % 4]
+                out[qid] = diamond[(idx[pos] + direction) % 4]
 
     return out
 
 
 def foreign_qubits_on_any_diamond(
-    current_pos: Dict[int, Coord],
-    diamonds: List[Tuple[List[Coord], int]],
-    allowed: Set[int],
+    current_pos: dict[int, Coord],
+    diamonds: list[tuple[list[Coord], int]],
+    allowed: set[int],
 ) -> bool:
     if not diamonds:
         return False
-    nodes: Set[Coord] = set()
-    for D, _ in diamonds:
-        nodes |= set(D)
+    nodes: set[Coord] = set()
+    for diamond, _ in diamonds:
+        nodes |= set(diamond)
     for qid, pos in current_pos.items():
         if qid in allowed:
             continue
@@ -483,9 +544,9 @@ def foreign_qubits_on_any_diamond(
 
 
 def is_ready_pair(
-    pid: Tuple[int, int],
-    remaining: Set[Tuple[int, int]],
-    pair_order: Dict[Tuple[int, int], int],
+    pid: tuple[int, int],
+    remaining: set[tuple[int, int]],
+    pair_order: dict[tuple[int, int], int],
 ) -> bool:
     idx = pair_order[pid]
     a, b = pid
@@ -502,20 +563,20 @@ def is_ready_pair(
 
 @dataclass(frozen=True)
 class SoloStep:
-    updates_pair_only: Dict[int, Coord]
+    updates_pair_only: dict[int, Coord]
     sample: bool
-    diamonds: List[Tuple[List[Coord], int]]
+    diamonds: list[tuple[list[Coord], int]]
 
 
 class SoloPlan:
     def __init__(
         self,
-        ticks: List[SoloStep],
-        pos_trace: Dict[int, List[Coord]],
-        used_diamonds: Set[Tuple[Coord, Coord, Coord, Coord]],
-        in_idx: Optional[int],
-        out_idx: Optional[int],
-    ):
+        ticks: list[SoloStep],
+        pos_trace: dict[int, list[Coord]],
+        used_diamonds: set[tuple[Coord, Coord, Coord, Coord]],
+        in_idx: int | None,
+        out_idx: int | None,
+    ) -> None:
         self.ticks = ticks
         self.pos_trace = pos_trace
         self.used_diamonds = used_diamonds
@@ -531,23 +592,23 @@ class RouteRuntime:
     def __init__(
         self,
         G: nx.Graph,
-        qubits: List[Qubit],
+        qubits: list[Qubit],
         p_success: float,
         p_repair: float,
-    ):
+    ) -> None:
         self.G = G
         self.p_success = p_success
         self.p_repair = p_repair
 
-        self.current_pos: Dict[int, Coord] = {q.id: q.pos for q in qubits}
-        self.all_qids: Set[int] = {q.id for q in qubits}
+        self.current_pos: dict[int, Coord] = {q.id: q.pos for q in qubits}
+        self.all_qids: set[int] = {q.id for q in qubits}
 
-        self.timelines: Dict[int, List[TimedNode]] = {q.id: [(q.pos, 0)] for q in qubits}
+        self.timelines: dict[int, list[TimedNode]] = {q.id: [(q.pos, 0)] for q in qubits}
         self.t = 0
         self.wait_streak = 0
 
-        self.defective_edges: Set[frozenset] = set()
-        self.edge_timebands: List[Tuple[int, int, Set[frozenset]]] = []
+        self.defective_edges: set[frozenset] = set()
+        self.edge_timebands: list[tuple[int, int, set[frozenset]]] = []
 
         sn_nodes = [n for n in G.nodes() if is_sn(G, n)]
         self.SN = G.subgraph(sn_nodes).copy()
@@ -562,7 +623,7 @@ class RouteRuntime:
                 if random.random() < (1.0 - self.p_success):
                     self.defective_edges.add(e)
 
-    def would_use_defect(self, pending: Dict[int, Coord]) -> bool:
+    def would_use_defect(self, pending: dict[int, Coord]) -> bool:
         for qid, newp in pending.items():
             u = self.current_pos[qid]
             v = newp
@@ -570,7 +631,7 @@ class RouteRuntime:
                 return True
         return False
 
-    def commit_tick(self, pending: Dict[int, Coord], *, sample: bool) -> bool:
+    def commit_tick(self, pending: dict[int, Coord], *, sample: bool) -> bool:
         if sample:
             self.sample_edge_failures()
 

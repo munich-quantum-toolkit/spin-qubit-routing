@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import random
 from copy import deepcopy
-from typing import Dict, List, Optional, Set, Tuple
 
 import networkx as nx
 
-from routing.common import AStar, Coord, MAX_TIME, Reservations, TimedNode, Qubit
-from routing.routing_strategy import RoutingStrategy
+from routing.common import AStar, Coord, MAX_TIME, Qubit, Reservations, TimedNode
+from routing.routing_strategy import RoutingResult, RoutingStrategy
 
 MAX_REPLANS = 50
 MAX_GLOBAL_ITERS = 50
@@ -17,25 +16,25 @@ class DefaultRoutingPlanner(RoutingStrategy):
     def route(
         self,
         G: nx.Graph,
-        qubits: List[Qubit],
-        pairs: List[Tuple[Qubit, Qubit]],
+        qubits: list[Qubit],
+        pairs: list[tuple[Qubit, Qubit]],
         p_success: float,
         p_repair: float,
-    ):
-        current_pos: Dict[int, Coord] = {q.id: q.pos for q in qubits}
-        all_qids: Set[int] = {q.id for q in qubits}
+    ) -> RoutingResult:
+        current_pos: dict[int, Coord] = {q.id: q.pos for q in qubits}
+        all_qids: set[int] = {q.id for q in qubits}
 
-        defective_edges: Set[frozenset] = set()
-        batch_plans: List[Dict[int, List[TimedNode]]] = []
-        batch_defects: List[Set[frozenset]] = []
+        defective_edges: set[frozenset] = set()
+        batch_plans: list[dict[int, list[TimedNode]]] = []
+        batch_defects: list[set[frozenset]] = []
 
-        total_ins: Set[Coord] = {n for n in G if G.nodes[n].get("type") == "IN"}
-        tried_meetings: Dict[frozenset, Set[Coord]] = {}
+        total_ins: set[Coord] = {n for n in G if G.nodes[n].get("type") == "IN"}
+        tried_meetings: dict[frozenset, set[Coord]] = {}
 
         layers = self._build_layers(pairs)
 
         idx = 0
-        replan_counts: Dict[int, int] = {}
+        replan_counts: dict[int, int] = {}
         global_iter = 0
 
         while idx < len(layers):
@@ -49,10 +48,10 @@ class DefaultRoutingPlanner(RoutingStrategy):
             tried_meetings.clear()
 
             layer_pairs = layers[idx]
-            layer_qids: Set[int] = {x for ab in layer_pairs for x in ab}
-            non_layer_qids: Set[int] = all_qids - layer_qids
-            layer_starts: Set[Coord] = {current_pos[q] for q in layer_qids}
-            occupied_now: Set[Coord] = {current_pos[q] for q in all_qids}
+            layer_qids: set[int] = {x for ab in layer_pairs for x in ab}
+            non_layer_qids: set[int] = all_qids - layer_qids
+            layer_starts: set[Coord] = {current_pos[q] for q in layer_qids}
+            occupied_now: set[Coord] = {current_pos[q] for q in all_qids}
 
             replan_current_layer = False
 
@@ -97,16 +96,18 @@ class DefaultRoutingPlanner(RoutingStrategy):
                 idx += 1
                 continue
 
-            F_layer: Set[Coord] = DefaultRoutingPlanner._collect_layer_nodes(to_meeting_plans, fixed_meetings)
+            F_layer: set[Coord] = DefaultRoutingPlanner._collect_layer_nodes(
+                to_meeting_plans, fixed_meetings
+            )
             F_all = set(F_layer) | set(layer_starts)
 
-            blockers_now: List[int] = [qid for qid in non_layer_qids if current_pos[qid] in F_all]
+            blockers_now: list[int] = [qid for qid in non_layer_qids if current_pos[qid] in F_all]
 
-            blocker_to_pair: Dict[int, Tuple[int, int]] = {}
-            evac_plans: Dict[int, List[TimedNode]] = {}
+            blocker_to_pair: dict[int, tuple[int, int]] = {}
+            evac_plans: dict[int, list[TimedNode]] = {}
 
             if blockers_now:
-                node_to_pairs: Dict[Coord, List[Tuple[int, int]]] = {}
+                node_to_pairs: dict[Coord, list[tuple[int, int]]] = {}
                 for (a, b) in layer_pairs:
                     key = frozenset({a, b})
                     if key not in fixed_meetings:
@@ -122,23 +123,25 @@ class DefaultRoutingPlanner(RoutingStrategy):
                         blocker_to_pair[qid] = pairs_touching[0]
 
                 avoid_for_targets = set(occupied_now) | F_all
-                targets: Dict[int, Coord] = {}
+                targets: dict[int, Coord] = {}
                 for qid in blockers_now:
-                    tgt = DefaultRoutingPlanner._nearest_free_sn(G, current_pos[qid], avoid_for_targets)
+                    tgt = DefaultRoutingPlanner._nearest_free_sn(
+                        G, current_pos[qid], avoid_for_targets
+                    )
                     if tgt is not None and tgt not in F_layer:
                         targets[qid] = tgt
                         avoid_for_targets.add(tgt)
 
                 cannot_place = [qid for qid in blockers_now if qid not in targets]
-                newly_affected: List[Tuple[int, int]] = []
+                newly_affected: list[tuple[int, int]] = []
                 for qid in cannot_place:
                     ab = blocker_to_pair.get(qid)
                     if ab:
                         newly_affected.append(ab)
 
                 if newly_affected:
-                    unique_pairs: List[Tuple[int, int]] = []
-                    seen_pairs: Set[frozenset] = set()
+                    unique_pairs: list[tuple[int, int]] = []
+                    seen_pairs: set[frozenset] = set()
                     for ab in newly_affected:
                         pkey = frozenset(ab)
                         if pkey in seen_pairs:
@@ -200,7 +203,8 @@ class DefaultRoutingPlanner(RoutingStrategy):
                 replan_counts[idx] = replan_counts.get(idx, 0) + 1
                 if replan_counts[idx] > MAX_REPLANS:
                     raise RuntimeError(
-                        f"Kein gültiges Routing für Layer {idx} nach {replan_counts[idx]} Neuplanungen."
+                        f"Kein gültiges Routing für Layer {idx} nach "
+                        f"{replan_counts[idx]} Neuplanungen."
                     )
                 continue
 
@@ -216,7 +220,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
             )
 
             if evac_plans:
-                to_spill_for_nonlayer: Set[Tuple[int, int]] = set()
+                to_spill_for_nonlayer: set[tuple[int, int]] = set()
                 for qid, path in evac_plans.items():
                     if DefaultRoutingPlanner._path_uses_defective_edge(path, defective_edges):
                         ab = blocker_to_pair.get(qid)
@@ -239,7 +243,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
                 idx += 1
                 continue
 
-            pre_in_paths: Dict[int, List[TimedNode]] = {}
+            pre_in_paths: dict[int, list[TimedNode]] = {}
             T_pre_sync = 0
 
             for (a, b) in layer_pairs:
@@ -249,7 +253,9 @@ class DefaultRoutingPlanner(RoutingStrategy):
                 meet = fixed_meetings[key]
 
                 for qid in (a, b):
-                    cut = DefaultRoutingPlanner._retime_until_pre_in_wait(to_meeting_plans[qid], meet, 0)
+                    cut = DefaultRoutingPlanner._retime_until_pre_in_wait(
+                        to_meeting_plans[qid], meet, 0
+                    )
                     if cut is None:
                         to_meeting_plans.pop(a, None)
                         to_meeting_plans.pop(b, None)
@@ -271,7 +277,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
                 idx += 1
                 continue
 
-            to_spill_layer_defects: List[Tuple[int, int]] = []
+            to_spill_layer_defects: list[tuple[int, int]] = []
             for (a, b) in layer_pairs:
                 key = frozenset({a, b})
                 if key not in fixed_meetings:
@@ -295,7 +301,10 @@ class DefaultRoutingPlanner(RoutingStrategy):
 
                 pre_a = pa[-1][0]
                 pre_b = pb[-1][0]
-                if (frozenset({pre_a, meet}) in defective_edges) or (frozenset({pre_b, meet}) in defective_edges):
+                if (
+                    frozenset({pre_a, meet}) in defective_edges
+                    or frozenset({pre_b, meet}) in defective_edges
+                ):
                     to_spill_layer_defects.append((a, b))
 
             if to_spill_layer_defects:
@@ -320,7 +329,9 @@ class DefaultRoutingPlanner(RoutingStrategy):
                     if not DefaultRoutingPlanner._path_uses_defective_edge(path, defective_edges)
                 }
 
-                micro_evacuate: Dict[int, List[TimedNode]] = {qid: path for qid, path in evac_plans.items()}
+                micro_evacuate: dict[int, list[TimedNode]] = {
+                    qid: path for qid, path in evac_plans.items()
+                }
                 dur = max((p[-1][1] for p in micro_evacuate.values()), default=0)
 
                 for qid in (all_qids - set(micro_evacuate.keys())):
@@ -332,8 +343,8 @@ class DefaultRoutingPlanner(RoutingStrategy):
                 for qid in evac_plans:
                     current_pos[qid] = evac_plans[qid][-1][0]
 
-            micro_to_pre: Dict[int, List[TimedNode]] = {}
-            exec_layer_qids: Set[int] = set()
+            micro_to_pre: dict[int, list[TimedNode]] = {}
+            exec_layer_qids: set[int] = set()
 
             for (a, b) in layer_pairs:
                 key = frozenset({a, b})
@@ -359,8 +370,13 @@ class DefaultRoutingPlanner(RoutingStrategy):
             for qid in exec_layer_qids:
                 current_pos[qid] = micro_to_pre[qid][-1][0]
 
-            micro_in: Dict[int, List[TimedNode]] = {}
-            active_layer_qids = {q for ab in layer_pairs if frozenset(ab) in fixed_meetings for q in ab}
+            micro_in: dict[int, list[TimedNode]] = {}
+            active_layer_qids = {
+                qid
+                for pair in layer_pairs
+                if frozenset(pair) in fixed_meetings
+                for qid in pair
+            }
 
             for (a, b) in layer_pairs:
                 key = frozenset({a, b})
@@ -371,7 +387,10 @@ class DefaultRoutingPlanner(RoutingStrategy):
                 pre_a = current_pos[a]
                 pre_b = current_pos[b]
 
-                if (frozenset({pre_a, meet}) in defective_edges) or (frozenset({pre_b, meet}) in defective_edges):
+                if (
+                    frozenset({pre_a, meet}) in defective_edges
+                    or frozenset({pre_b, meet}) in defective_edges
+                ):
                     micro_in[a] = [(pre_a, 0), (pre_a, 2)]
                     micro_in[b] = [(pre_b, 0), (pre_b, 2)]
                 else:
@@ -389,10 +408,10 @@ class DefaultRoutingPlanner(RoutingStrategy):
         return DefaultRoutingPlanner.stitch_batches(qubits, batch_plans, batch_defects)
 
     @staticmethod
-    def _build_layers(pairs: List[Tuple[Qubit, Qubit]]) -> List[List[Tuple[int, int]]]:
-        layers: List[List[Tuple[int, int]]] = []
-        used: Set[int] = set()
-        cur: List[Tuple[int, int]] = []
+    def _build_layers(pairs: list[tuple[Qubit, Qubit]]) -> list[list[tuple[int, int]]]:
+        layers: list[list[tuple[int, int]]] = []
+        used: set[int] = set()
+        cur: list[tuple[int, int]] = []
 
         for qa, qb in pairs:
             a, b = qa.id, qb.id
@@ -412,8 +431,8 @@ class DefaultRoutingPlanner(RoutingStrategy):
 
     @staticmethod
     def _snapshot_defects(
-        batch_defects: List[Set[frozenset]],
-        defective_edges: Set[frozenset],
+        batch_defects: list[set[frozenset]],
+        defective_edges: set[frozenset],
         n: int,
     ) -> None:
         for _ in range(n):
@@ -421,10 +440,10 @@ class DefaultRoutingPlanner(RoutingStrategy):
 
     @staticmethod
     def _forbidden_for_layer_qid(
-        current_pos: Dict[int, Coord],
-        layer_starts: Set[Coord],
+        current_pos: dict[int, Coord],
+        layer_starts: set[Coord],
         qid: int,
-    ) -> Set[Coord]:
+    ) -> set[Coord]:
         return set(layer_starts) - {current_pos[qid]}
 
     @staticmethod
@@ -433,13 +452,13 @@ class DefaultRoutingPlanner(RoutingStrategy):
 
     @staticmethod
     def _build_blocker_chain_along_path(
-        path: List[TimedNode],
-        wait_pos: Dict[int, Coord],
-        blocker_to_pair: Dict[int, Tuple[int, int]],
-        root_pair: Optional[Tuple[int, int]],
-    ) -> List[int]:
-        chain: List[int] = []
-        seen: Set[int] = set()
+        path: list[TimedNode],
+        wait_pos: dict[int, Coord],
+        blocker_to_pair: dict[int, tuple[int, int]],
+        root_pair: tuple[int, int] | None,
+    ) -> list[int]:
+        chain: list[int] = []
+        seen: set[int] = set()
 
         for (_, _), (node_next, _) in zip(path[:-1], path[1:]):
             for bqid, bpos in wait_pos.items():
@@ -457,7 +476,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
     def _block_non_sn_nodes(
         res: Reservations,
         G: nx.Graph,
-        allowed: Set[Coord],
+        allowed: set[Coord],
     ) -> None:
         for node in G.nodes:
             if node in allowed:
@@ -470,29 +489,29 @@ class DefaultRoutingPlanner(RoutingStrategy):
     @staticmethod
     def _plan_layer_only(
         G: nx.Graph,
-        current_pos: Dict[int, Coord],
-        layer_pairs: List[Tuple[int, int]],
-        layer_starts: Set[Coord],
-        defective_edges: Set[frozenset],
-        banned_meetings: Optional[Dict[frozenset, Set[Coord]]] = None,
-        all_ins: Optional[Set[Coord]] = None,
-    ) -> Tuple[
-        Dict[int, List[TimedNode]],
-        Dict[frozenset, Coord],
+        current_pos: dict[int, Coord],
+        layer_pairs: list[tuple[int, int]],
+        layer_starts: set[Coord],
+        defective_edges: set[frozenset],
+        banned_meetings: dict[frozenset, set[Coord]] | None = None,
+        all_ins: set[Coord] | None = None,
+    ) -> tuple[
+        dict[int, list[TimedNode]],
+        dict[frozenset, Coord],
         bool,
-        List[Tuple[int, int]],
-        List[Tuple[int, int]],
+        list[tuple[int, int]],
+        list[tuple[int, int]],
     ]:
         res = Reservations(G, blocked_edges=defective_edges)
-        plans: Dict[int, List[TimedNode]] = {}
-        fixed_meetings: Dict[frozenset, Coord] = {}
-        unplaceable: List[Tuple[int, int]] = []
+        plans: dict[int, list[TimedNode]] = {}
+        fixed_meetings: dict[frozenset, Coord] = {}
+        unplaceable: list[tuple[int, int]] = []
 
         banned_meetings = banned_meetings or {}
         all_ins = all_ins or set()
-        exhausted_pairs: List[Tuple[int, int]] = []
+        exhausted_pairs: list[tuple[int, int]] = []
 
-        cand_per_pair: Dict[Tuple[int, int], List[Coord]] = {}
+        cand_per_pair: dict[tuple[int, int], list[Coord]] = {}
         for (a, b) in layer_pairs:
             qa, qb = current_pos[a], current_pos[b]
             cand_per_pair[(a, b)] = DefaultRoutingPlanner._best_meeting_candidates(
@@ -500,14 +519,14 @@ class DefaultRoutingPlanner(RoutingStrategy):
             )
 
         order = sorted(layer_pairs, key=lambda ab: len(cand_per_pair.get(ab, [])))
-        reserved_in: Set[Coord] = set()
+        reserved_in: set[Coord] = set()
 
         for (a, b) in order:
             qa, qb = current_pos[a], current_pos[b]
             placed = False
 
             cur_preins_map = DefaultRoutingPlanner._preins_for_plans(plans, fixed_meetings)
-            existing_preins: Set[Coord] = set(cur_preins_map.values()) if cur_preins_map else set()
+            existing_preins: set[Coord] = set(cur_preins_map.values()) if cur_preins_map else set()
 
             cands_all = DefaultRoutingPlanner._best_meeting_candidates(
                 G, qa, qb, reserved=reserved_in, forbidden_nodes=set()
@@ -515,7 +534,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
             banned = banned_meetings.get(frozenset({a, b}), set())
             cands = [c for c in cands_all if c not in banned]
 
-            existing_path_nodes: Set[Coord] = set()
+            existing_path_nodes: set[Coord] = set()
             for p in plans.values():
                 for c, _ in p:
                     existing_path_nodes.add(c)
@@ -608,8 +627,8 @@ class DefaultRoutingPlanner(RoutingStrategy):
         return plans, fixed_meetings, preins_ok, unplaceable, exhausted_pairs
 
     @staticmethod
-    def _path_nodes_of_pair(plans: Dict[int, List[TimedNode]], a: int, b: int) -> Set[Coord]:
-        s: Set[Coord] = set()
+    def _path_nodes_of_pair(plans: dict[int, list[TimedNode]], a: int, b: int) -> set[Coord]:
+        s: set[Coord] = set()
         for qid in (a, b):
             for c, _ in plans.get(qid, []):
                 s.add(c)
@@ -617,10 +636,10 @@ class DefaultRoutingPlanner(RoutingStrategy):
 
     @staticmethod
     def _collect_layer_nodes(
-        plans: Dict[int, List[TimedNode]],
-        fixed_meetings: Dict[frozenset, Coord],
-    ) -> Set[Coord]:
-        S: Set[Coord] = set()
+        plans: dict[int, list[TimedNode]],
+        fixed_meetings: dict[frozenset, Coord],
+    ) -> set[Coord]:
+        S: set[Coord] = set()
         for p in plans.values():
             for c, _ in p:
                 S.add(c)
@@ -633,9 +652,9 @@ class DefaultRoutingPlanner(RoutingStrategy):
         G: nx.Graph,
         q0: Coord,
         q1: Coord,
-        reserved: Optional[Set[Coord]] = None,
-        forbidden_nodes: Optional[Set[Coord]] = None,
-    ) -> List[Coord]:
+        reserved: set[Coord] | None = None,
+        forbidden_nodes: set[Coord] | None = None,
+    ) -> list[Coord]:
         reserved = reserved or set()
         forbidden_nodes = forbidden_nodes or set()
 
@@ -648,7 +667,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
         return cands
 
     @staticmethod
-    def _entry_sn_from_path(path: List[TimedNode], meeting: Coord) -> Optional[Coord]:
+    def _entry_sn_from_path(path: list[TimedNode], meeting: Coord) -> Coord | None:
         first_meet_idx = None
         for i, (c, _) in enumerate(path):
             if c == meeting:
@@ -660,10 +679,10 @@ class DefaultRoutingPlanner(RoutingStrategy):
 
     @staticmethod
     def _preins_for_plans(
-        plans: Dict[int, List[TimedNode]],
-        fixed_meetings: Dict[frozenset, Coord],
-    ) -> Optional[Dict[int, Coord]]:
-        preins: Dict[int, Coord] = {}
+        plans: dict[int, list[TimedNode]],
+        fixed_meetings: dict[frozenset, Coord],
+    ) -> dict[int, Coord] | None:
+        preins: dict[int, Coord] = {}
         for pair_key, meet in fixed_meetings.items():
             qids = list(pair_key)
             if len(qids) != 2:
@@ -680,10 +699,10 @@ class DefaultRoutingPlanner(RoutingStrategy):
 
     @staticmethod
     def _retime_until_pre_in_wait(
-        path: List[TimedNode],
+        path: list[TimedNode],
         meeting: Coord,
         sync_time: int,
-    ) -> Optional[List[TimedNode]]:
+    ) -> list[TimedNode] | None:
         if not path:
             return None
 
@@ -716,11 +735,11 @@ class DefaultRoutingPlanner(RoutingStrategy):
     @staticmethod
     def _mapf_to_targets(
         G: nx.Graph,
-        starts: Dict[int, Coord],
-        targets: Dict[int, Coord],
-        blocked_nodes: Optional[Set[Coord]] = None,
-        blocked_edges: Optional[Set[frozenset]] = None,
-    ) -> Dict[int, List[TimedNode]]:
+        starts: dict[int, Coord],
+        targets: dict[int, Coord],
+        blocked_nodes: set[Coord] | None = None,
+        blocked_edges: set[frozenset] | None = None,
+    ) -> dict[int, list[TimedNode]]:
         if not starts:
             return {}
 
@@ -735,7 +754,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
             for t in range(0, MAX_TIME + 1):
                 res.node_caps[node][t] = cap
 
-        plans: Dict[int, List[TimedNode]] = {}
+        plans: dict[int, list[TimedNode]] = {}
 
         for _, s in starts.items():
             res.occupy_node(s, 0)
@@ -759,7 +778,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
     @staticmethod
     def _sample_edge_failures(
         G: nx.Graph,
-        defective_edges: Set[frozenset],
+        defective_edges: set[frozenset],
         p_fail: float,
         p_repair: float,
     ) -> None:
@@ -773,14 +792,14 @@ class DefaultRoutingPlanner(RoutingStrategy):
                     defective_edges.add(e)
 
     @staticmethod
-    def _path_uses_defective_edge(path: List[TimedNode], defective_edges: Set[frozenset]) -> bool:
+    def _path_uses_defective_edge(path: list[TimedNode], defective_edges: set[frozenset]) -> bool:
         for (u, _), (v, _) in zip(path[:-1], path[1:]):
             if u != v and frozenset({u, v}) in defective_edges:
                 return True
         return False
 
     @staticmethod
-    def _nearest_free_sn(G: nx.Graph, source: Coord, avoid: Set[Coord]) -> Optional[Coord]:
+    def _nearest_free_sn(G: nx.Graph, source: Coord, avoid: set[Coord]) -> Coord | None:
         from collections import deque
 
         q = deque([source])
@@ -796,7 +815,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
         return None
 
     @staticmethod
-    def _block_nodes(res: Reservations, nodes: Set[Coord]) -> None:
+    def _block_nodes(res: Reservations, nodes: set[Coord]) -> None:
         for node in nodes:
             cap = res.node_capacity(node)
             for t in range(0, MAX_TIME + 1):
@@ -805,20 +824,20 @@ class DefaultRoutingPlanner(RoutingStrategy):
     @staticmethod
     def _resolve_evacuate_collisions_with_waiters(
         G: nx.Graph,
-        evac_plans: Dict[int, List[TimedNode]],
-        targets: Dict[int, Coord],
-        current_pos: Dict[int, Coord],
-        waiting_qids: Set[int],
-        blocked_nodes: Set[Coord],
-        defective_edges: Set[frozenset],
-        blocker_to_pair: Dict[int, Tuple[int, int]],
-    ) -> Dict[int, List[TimedNode]]:
+        evac_plans: dict[int, list[TimedNode]],
+        targets: dict[int, Coord],
+        current_pos: dict[int, Coord],
+        waiting_qids: set[int],
+        blocked_nodes: set[Coord],
+        defective_edges: set[frozenset],
+        blocker_to_pair: dict[int, tuple[int, int]],
+    ) -> dict[int, list[TimedNode]]:
         if not evac_plans:
             return {}
 
         plans = dict(evac_plans)
-        wait_pos: Dict[int, Coord] = {qid: current_pos[qid] for qid in waiting_qids}
-        targets_local: Dict[int, Coord] = dict(targets)
+        wait_pos: dict[int, Coord] = {qid: current_pos[qid] for qid in waiting_qids}
+        targets_local: dict[int, Coord] = dict(targets)
 
         changed = True
         while changed:
@@ -835,11 +854,11 @@ class DefaultRoutingPlanner(RoutingStrategy):
                 if not chain_blockers:
                     continue
 
-                chain_agents: List[int] = [mover_qid] + chain_blockers
-                agents_to_plan: Set[int] = set(plans.keys()) | set(chain_blockers)
+                chain_agents: list[int] = [mover_qid] + chain_blockers
+                agents_to_plan: set[int] = set(plans.keys()) | set(chain_blockers)
 
-                starts: Dict[int, Coord] = {qid: current_pos[qid] for qid in agents_to_plan}
-                new_targets_full: Dict[int, Coord] = {
+                starts: dict[int, Coord] = {qid: current_pos[qid] for qid in agents_to_plan}
+                new_targets_full: dict[int, Coord] = {
                     qid: targets_local[qid] for qid in agents_to_plan if qid in targets_local
                 }
 
@@ -903,15 +922,15 @@ class DefaultRoutingPlanner(RoutingStrategy):
 
     @staticmethod
     def stitch_batches(
-        qubits: List[Qubit],
-        batch_plans: List[Dict[int, List[TimedNode]]],
-        batch_defects: Optional[List[Set[frozenset]]] = None,
-    ) -> Tuple[Dict[int, List[TimedNode]], List[Tuple[int, int, Set[frozenset]]]]:
+        qubits: list[Qubit],
+        batch_plans: list[dict[int, list[TimedNode]]],
+        batch_defects: list[set[frozenset]] | None = None,
+    ) -> tuple[dict[int, list[TimedNode]], list[tuple[int, int, set[frozenset]]]]:
         if not batch_plans:
             timelines = {q.id: [(q.pos, 0)] for q in qubits}
             return timelines, []
 
-        durations: List[int] = []
+        durations: list[int] = []
         for plans in batch_plans:
             if not plans:
                 durations.append(0)
@@ -919,8 +938,8 @@ class DefaultRoutingPlanner(RoutingStrategy):
             durations.append(max(p[-1][1] for p in plans.values()))
 
         initial_pos = {q.id: q.pos for q in qubits}
-        timelines: Dict[int, List[TimedNode]] = {q.id: [(initial_pos[q.id], 0)] for q in qubits}
-        edge_timebands: List[Tuple[int, int, Set[frozenset]]] = []
+        timelines: dict[int, list[TimedNode]] = {q.id: [(initial_pos[q.id], 0)] for q in qubits}
+        edge_timebands: list[tuple[int, int, set[frozenset]]] = []
 
         t_offset = 0
         for b, plans in enumerate(batch_plans):
@@ -954,7 +973,11 @@ class DefaultRoutingPlanner(RoutingStrategy):
                 else:
                     timelines[qid].extend(shifted)
 
-            defects = set(batch_defects[b]) if (batch_defects is not None and b < len(batch_defects)) else set()
+            defects = (
+                set(batch_defects[b])
+                if batch_defects is not None and b < len(batch_defects)
+                else set()
+            )
             edge_timebands.append((t_offset, t_offset + batch_T, defects))
 
             t_offset += batch_T
