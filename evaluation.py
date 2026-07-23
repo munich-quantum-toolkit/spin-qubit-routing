@@ -41,10 +41,6 @@ def total_timesteps(timelines: Dict[int, List[TimedNode]]) -> int:
 
 
 def get_max_sn_nodes(width: int, height: int) -> int:
-    """
-    Baue das Netzwerk mit NetworkBuilder und zähle alle Knoten,
-    deren Attribut 'type' == 'SN' ist.
-    """
     G: nx.Graph = NetworkBuilder.build_network(width, height)
     n_sn = sum(1 for _, data in G.nodes(data=True) if data.get("type") == "SN")
     return n_sn
@@ -228,7 +224,6 @@ def evaluate_strategies_over_grids(
     qubits_per_grid: List[int] = []
 
     for (width, height) in grid_sizes:
-        # Anzahl SN-Nodes bestimmen
         n_sn = get_max_sn_nodes(width, height)
         if (width, height) == (5, 5):
             n_qubits = 12
@@ -588,7 +583,6 @@ def evaluate_runtimes_for_strategies_3x3(
     n_qubits_list = list(range(n_qubits_min, n_qubits_max + 1))
     runtimes: Dict[str, List[float]] = {name: [] for name in routing_strategies}
 
-    # Track, ob eine Strategie dauerhaft "tot" ist
     strategy_dead: Dict[str, bool] = {name: False for name in routing_strategies}
 
     print("\n=== Runtime Evaluation (3x3 Grid, RandomPlacement) ===")
