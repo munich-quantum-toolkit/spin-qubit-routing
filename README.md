@@ -1,6 +1,6 @@
 # Routing Framework for Spin Qubits
 
-This repository contains the implementation of the routing algorithms and inital-mapping techniques described in the paper "_Routing Techniques for Error Corrected Silicon Spin Qubit Quantum Architectures_".
+This repository contains the implementation of the routing algorithms and inital-mapping techniques described in the paper "_Routing Techniques for Error-Corrected Silicon Spin Qubit Quantum Architectures_".
 
 ## Usage
 
