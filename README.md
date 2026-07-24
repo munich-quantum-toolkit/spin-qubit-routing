@@ -8,7 +8,7 @@ Follow these steps to execute the framework:
 1. Clone this repository using
    
    ```
-   git clone https://github.com/Proenchen/spin-qubit-compilation.git
+   git clone https://github.com/munich-quantum-toolkit/spin-qubit-routing.git
    ```
 2. Install all required packages listed in the [requirements](requirements.txt) by running:
    
