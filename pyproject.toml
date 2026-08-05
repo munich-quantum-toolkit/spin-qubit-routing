@@ -27,6 +27,7 @@ dependencies = [
     "numpy>=1.26; python_version >= '3.12'",
     "numpy>=2.1; python_version >= '3.13'",
     "numpy>=2.3.2; python_version >= '3.14'",
+    "typing_extensions>=4.16.0",
 ]
 
 classifiers = [
@@ -105,15 +106,22 @@ select = ["ALL"]
 ignore = [
     "C90",     # <...> too complex
     "COM812",  # Conflicts with formatter
+    "D",       # We do not have docstrings yet
     "PLR09",   # Too many <...>
+    "PLR1702", # Too many nested blocks
     "PLR2004", # Magic value used in comparison
     "S101",    # Use of assert detected
+    "S311",    # Standard pseudo-random generators are not suitable for cryptographic purposes
     "S404",    # `subprocess` module is possibly insecure
 ]
 future-annotations = true
 
 [tool.ruff.lint.isort]
 known-first-party = ["mqt.sqr"]
+
+[tool.ruff.lint.per-file-ignores]
+"eval/**" = ["INP001"]
+"examples/**" = ["INP001"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -138,6 +146,7 @@ default.extend-ignore-re = [
 
 [tool.typos.default.extend-words]
 wille = "wille"
+strat = "strat"
 
 
 [tool.repo-review.ignore]
@@ -146,6 +155,11 @@ MY100 = "We use ty instead of mypy"
 PC111 = "We use ruff instead of blacken-docs"
 PC160 = "We use a mirror of crate-ci/typos"
 PC170 = "We do not use rST files anymore"
+# Temporary ignores
+GH100 = "We do not have tests yet"
+PY004 = "We do not have docs yet"
+PY005 = "We do not have tests yet"
+PY007 = "We do not have tests yet"
 
 
 [tool.ty.terminal]

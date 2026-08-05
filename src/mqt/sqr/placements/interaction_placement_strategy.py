@@ -1,12 +1,18 @@
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
 from __future__ import annotations
 
 import random
-from typing import Final
+from typing import Final, cast
 
 import networkx as nx
 
 from mqt.sqr.placements.placement_strategy import PlacementStrategy
-
 
 DECAY: Final = 0.9
 
@@ -45,12 +51,10 @@ class InteractionPlacementStrategy(PlacementStrategy):
             if first_id == second_id:
                 continue
 
-            interaction = tuple(sorted((first_id, second_id)))
+            interaction = cast("tuple[int, int]", tuple(sorted((first_id, second_id))))
             weight = DECAY**index
 
-            interaction_weights[interaction] = (
-                interaction_weights.get(interaction, 0.0) + weight
-            )
+            interaction_weights[interaction] = interaction_weights.get(interaction, 0.0) + weight
 
         interaction_graph = nx.Graph()
         interaction_graph.add_nodes_from(range(n_qubits))
@@ -76,17 +80,9 @@ class InteractionPlacementStrategy(PlacementStrategy):
         sorted_sn_nodes = sorted(sn_nodes, key=lambda coordinate: coordinate)
 
         if n_qubits > len(sorted_sn_nodes):
-            raise ValueError(
-                f"n_qubits={n_qubits} exceeds available SN nodes "
-                f"({len(sorted_sn_nodes)})."
-            )
+            msg = f"n_qubits={n_qubits} exceeds available SN nodes ({len(sorted_sn_nodes)})."
+            raise ValueError(msg)
 
-        coordinates_by_qubit_id = {
-            qubit_id: sorted_sn_nodes[index]
-            for index, qubit_id in enumerate(qubit_order)
-        }
+        coordinates_by_qubit_id = {qubit_id: sorted_sn_nodes[index] for index, qubit_id in enumerate(qubit_order)}
 
-        return [
-            coordinates_by_qubit_id[qubit_id]
-            for qubit_id in range(n_qubits)
-        ]
+        return [coordinates_by_qubit_id[qubit_id] for qubit_id in range(n_qubits)]

@@ -1,21 +1,34 @@
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
 from __future__ import annotations
 
+import operator
 from copy import deepcopy
+from typing import TYPE_CHECKING
 
-import networkx as nx
+from typing_extensions import override
 
-from mqt.sqr.routing.common import Coord, MAX_TIME, Qubit, Reservations, TimedNode
+from mqt.sqr.routing.common import MAX_TIME, Coord, Qubit, Reservations, TimedNode
 from mqt.sqr.routing.default_routing import DefaultRoutingPlanner
 from mqt.sqr.routing.routing_strategy import RoutingResult, RoutingStrategy
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 MAX_REPLANS = 50
 MAX_GLOBAL_ITERS = 50
 
 
 class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
+    @override
     def route(
         self,
-        G: nx.Graph,
+        graph: nx.Graph,
         qubits: list[Qubit],
         pairs: list[tuple[Qubit, Qubit]],
         p_success: float,
@@ -28,7 +41,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         batch_plans: list[dict[int, list[TimedNode]]] = []
         batch_defects: list[set[frozenset]] = []
 
-        total_ins: set[Coord] = {n for n in G if G.nodes[n].get("type") == "IN"}
+        total_ins: set[Coord] = {n for n in graph if graph.nodes[n].get("type") == "IN"}
         tried_meetings: dict[frozenset, set[Coord]] = {}
 
         layers = RerouteRoutingPlanner._build_layers_from_pairs(pairs)
@@ -40,10 +53,11 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         while idx < len(layers):
             global_iter += 1
             if global_iter > MAX_GLOBAL_ITERS:
-                raise RuntimeError(
-                    f"Abbruch (Safeguard): mehr als {MAX_GLOBAL_ITERS} Iterationen "
-                    f"im Routing-Hauptloop (mögliche Dauerschleife, aktueller Layer = {idx})."
+                msg = (
+                    f"Aborted (safeguard): more than {MAX_GLOBAL_ITERS} iterations "
+                    f"in the main routing loop (possible infinite loop, current layer = {idx})."
                 )
+                raise RuntimeError(msg)
 
             tried_meetings.clear()
 
@@ -59,8 +73,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 _,
                 unplaceable_pairs_step1,
                 exhausted_pairs_step1,
-            ) = DefaultRoutingPlanner._plan_layer_only(
-                G=G,
+            ) = DefaultRoutingPlanner.plan_layer_only(
+                graph=graph,
                 current_pos=current_pos,
                 layer_pairs=layer_pairs,
                 layer_starts=layer_starts,
@@ -81,10 +95,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                     continue
 
             if not fixed_meetings and not unplaceable_pairs_step1 and not exhausted_pairs_step1:
-                raise RuntimeError(
-                    f"Layer {idx} unlösbar: keine Meeting-INs fixiert und kein Spillover möglich. "
-                    f"Paare: {layer_pairs}"
-                )
+                msg = f"Layer {idx} unsolvable: no meeting-INs fixed and no spillover possible. Pairs: {layer_pairs}"
+                raise RuntimeError(msg)
 
             if not fixed_meetings:
                 batch_plans.append(RerouteRoutingPlanner._wait_plan(all_qids, current_pos, 1))
@@ -92,10 +104,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 idx += 1
                 continue
 
-            F_layer: set[Coord] = DefaultRoutingPlanner._collect_layer_nodes(
-                to_meeting_plans, fixed_meetings
-            )
-            F_all = set(F_layer) | set(layer_starts)
+            f_layer: set[Coord] = DefaultRoutingPlanner.collect_layer_nodes(to_meeting_plans, fixed_meetings)
+            f_all = set(f_layer) | set(layer_starts)
 
             (
                 replan_current_layer,
@@ -106,27 +116,24 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 blocker_to_pair,
                 blocked_nodes_evacs,
             ) = RerouteRoutingPlanner._plan_non_layer_evacuation(
-                G=G,
+                graph=graph,
                 current_pos=current_pos,
-                all_qids=all_qids,
                 non_layer_qids=non_layer_qids,
                 layer_pairs=layer_pairs,
                 to_meeting_plans=to_meeting_plans,
                 fixed_meetings=fixed_meetings,
                 defective_edges=defective_edges,
                 occupied_now=occupied_now,
-                F_all=F_all,
-                F_layer=F_layer,
+                f_all=f_all,
+                f_layer=f_layer,
                 tried_meetings=tried_meetings,
             )
 
             if replan_current_layer:
                 replan_counts[idx] = replan_counts.get(idx, 0) + 1
                 if replan_counts[idx] > MAX_REPLANS:
-                    raise RuntimeError(
-                        f"Kein gültiges Routing für Layer {idx} nach "
-                        f"{replan_counts[idx]} Neuplanungen."
-                    )
+                    msg = f"No valid routing for layer {idx} after {replan_counts[idx]} replans."
+                    raise RuntimeError(msg)
                 continue
 
             if not fixed_meetings:
@@ -135,8 +142,8 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 idx += 1
                 continue
 
-            DefaultRoutingPlanner._sample_edge_failures(
-                G, defective_edges, p_fail=(1.0 - p_success), p_repair=p_repair
+            DefaultRoutingPlanner.sample_edge_failures(
+                graph, defective_edges, p_fail=(1.0 - p_success), p_repair=p_repair
             )
 
             (
@@ -144,10 +151,9 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 fixed_meetings,
                 evac_plans,
             ) = RerouteRoutingPlanner._reroute_or_spill_after_defects(
-                G=G,
+                graph=graph,
                 current_pos=current_pos,
                 layer_pairs=layer_pairs,
-                layer_starts=layer_starts,
                 defective_edges=defective_edges,
                 tried_meetings=tried_meetings,
                 to_meeting_plans=to_meeting_plans,
@@ -166,7 +172,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 idx += 1
                 continue
 
-            pre_in_paths, T_pre_sync = RerouteRoutingPlanner._compute_pre_in_paths(
+            _pre_in_paths, t_pre_sync = RerouteRoutingPlanner._compute_pre_in_paths(
                 layer_pairs=layer_pairs,
                 to_meeting_plans=to_meeting_plans,
                 fixed_meetings=fixed_meetings,
@@ -189,7 +195,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 evac_plans=evac_plans,
                 to_meeting_plans=to_meeting_plans,
                 fixed_meetings=fixed_meetings,
-                T_pre_sync=T_pre_sync,
+                t_pre_sync=t_pre_sync,
                 tried_meetings=tried_meetings,
                 layers=layers,
                 idx=idx,
@@ -247,22 +253,20 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         defective_edges: set[frozenset],
         n: int,
     ) -> None:
-        for _ in range(n):
-            batch_defects.append(set(defective_edges))
+        batch_defects.extend(set(defective_edges) for _ in range(n))
 
     @staticmethod
     def _plan_non_layer_evacuation(
-        G: nx.Graph,
+        graph: nx.Graph,
         current_pos: dict[int, Coord],
-        all_qids: set[int],
         non_layer_qids: set[int],
         layer_pairs: list[tuple[int, int]],
         to_meeting_plans: dict[int, list[TimedNode]],
         fixed_meetings: dict[frozenset, Coord],
         defective_edges: set[frozenset],
         occupied_now: set[Coord],
-        F_all: set[Coord],
-        F_layer: set[Coord],
+        f_all: set[Coord],
+        f_layer: set[Coord],
         tried_meetings: dict[frozenset, set[Coord]],
     ) -> tuple[
         bool,
@@ -273,16 +277,16 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         dict[int, tuple[int, int]],
         set[Coord],
     ]:
-        blockers_now: list[int] = [qid for qid in non_layer_qids if current_pos[qid] in F_all]
+        blockers_now: list[int] = [qid for qid in non_layer_qids if current_pos[qid] in f_all]
         if not blockers_now:
             return False, to_meeting_plans, fixed_meetings, {}, {}, {}, set()
 
         node_to_pairs: dict[Coord, list[tuple[int, int]]] = {}
-        for (a, b) in layer_pairs:
+        for a, b in layer_pairs:
             key = frozenset({a, b})
             if key not in fixed_meetings:
                 continue
-            nodes = DefaultRoutingPlanner._path_nodes_of_pair(to_meeting_plans, a, b)
+            nodes = DefaultRoutingPlanner.path_nodes_of_pair(to_meeting_plans, a, b)
             for n in nodes:
                 node_to_pairs.setdefault(n, []).append((a, b))
 
@@ -293,11 +297,11 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             if pairs_touching:
                 blocker_to_pair[qid] = pairs_touching[0]
 
-        avoid_for_targets = set(occupied_now) | F_all
+        avoid_for_targets = set(occupied_now) | f_all
         evac_targets: dict[int, Coord] = {}
         for qid in blockers_now:
-            tgt = DefaultRoutingPlanner._nearest_free_sn(G, current_pos[qid], avoid_for_targets)
-            if tgt is not None and tgt not in F_layer:
+            tgt = DefaultRoutingPlanner.nearest_free_sn(graph, current_pos[qid], avoid_for_targets)
+            if tgt is not None and tgt not in f_layer:
                 evac_targets[qid] = tgt
                 avoid_for_targets.add(tgt)
 
@@ -323,13 +327,13 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
         waiter_qids = non_layer_qids - set(evac_targets.keys())
         waiter_nodes = {current_pos[q] for q in waiter_qids}
-        blocked_nodes_evacs: set[Coord] = set(F_all) | set(waiter_nodes)
+        blocked_nodes_evacs: set[Coord] = set(f_all) | set(waiter_nodes)
 
         evac_plans: dict[int, list[TimedNode]] = {}
         if evac_targets and not replan_current_layer:
             try:
-                evac_plans = DefaultRoutingPlanner._mapf_to_targets(
-                    G=G,
+                evac_plans = DefaultRoutingPlanner.mapf_to_targets(
+                    graph=graph,
                     starts={qid: current_pos[qid] for qid in evac_targets},
                     targets=evac_targets,
                     blocked_nodes=blocked_nodes_evacs,
@@ -339,15 +343,15 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 evac_plans = {}
                 for qid, tgt in evac_targets.items():
                     try:
-                        one = DefaultRoutingPlanner._mapf_to_targets(
-                            G=G,
+                        one = DefaultRoutingPlanner.mapf_to_targets(
+                            graph=graph,
                             starts={qid: current_pos[qid]},
                             targets={qid: tgt},
                             blocked_nodes=blocked_nodes_evacs,
                             blocked_edges=defective_edges,
                         )
                         evac_plans[qid] = one[qid]
-                    except RuntimeError:
+                    except RuntimeError:  # ruff: ignore[try-except-in-loop]
                         ab = blocker_to_pair.get(qid)
                         if ab:
                             pkey = frozenset(ab)
@@ -362,7 +366,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         if evac_plans and not replan_current_layer:
             waiting_qids = non_layer_qids - set(evac_targets.keys())
             evac_plans = RerouteRoutingPlanner._resolve_evacuate_collisions_with_waiters(
-                G=G,
+                graph=graph,
                 evac_plans=evac_plans,
                 targets=evac_targets,
                 current_pos=current_pos,
@@ -384,10 +388,9 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
     @staticmethod
     def _reroute_or_spill_after_defects(
-        G: nx.Graph,
+        graph: nx.Graph,
         current_pos: dict[int, Coord],
         layer_pairs: list[tuple[int, int]],
-        layer_starts: set[Coord],
         defective_edges: set[frozenset],
         tried_meetings: dict[frozenset, set[Coord]],
         to_meeting_plans: dict[int, list[TimedNode]],
@@ -403,14 +406,14 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             broken_movers = {
                 qid
                 for qid, path in evac_plans.items()
-                if DefaultRoutingPlanner._path_uses_defective_edge(path, defective_edges)
+                if DefaultRoutingPlanner.path_uses_defective_edge(path, defective_edges)
             }
             if broken_movers:
                 try:
-                    evac_plans = DefaultRoutingPlanner._mapf_to_targets(
-                        G=G,
-                        starts={qid: current_pos[qid] for qid in evac_plans.keys()},
-                        targets={qid: evac_targets[qid] for qid in evac_plans.keys()},
+                    evac_plans = DefaultRoutingPlanner.mapf_to_targets(
+                        graph=graph,
+                        starts={qid: current_pos[qid] for qid in evac_plans},
+                        targets={qid: evac_targets[qid] for qid in evac_plans},
                         blocked_nodes=blocked_nodes_evacs,
                         blocked_edges=defective_edges,
                     )
@@ -422,13 +425,11 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                             to_spill_for_nonlayer.add(ab)
 
                     if to_spill_for_nonlayer:
-                        for (a, b) in to_spill_for_nonlayer:
+                        for a, b in to_spill_for_nonlayer:
                             key = frozenset({a, b})
                             meet = fixed_meetings.get(key)
                             if meet is not None:
-                                RerouteRoutingPlanner._mark_meeting_failed(
-                                    tried_meetings, (a, b), meet
-                                )
+                                RerouteRoutingPlanner._mark_meeting_failed(tried_meetings, (a, b), meet)
                             to_meeting_plans.pop(a, None)
                             to_meeting_plans.pop(b, None)
                             fixed_meetings.pop(key, None)
@@ -449,13 +450,11 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
         if need_reroute_pairs:
             ok_local, local_plans = RerouteRoutingPlanner._try_local_triangle_bypass_for_pairs(
-                G=G,
+                graph=graph,
                 current_pos=current_pos,
-                layer_pairs=layer_pairs,
                 fixed_meetings=fixed_meetings,
                 keep_pairs=need_reroute_pairs,
                 defective_edges=defective_edges,
-                layer_starts=layer_starts,
                 existing_layer_plans=to_meeting_plans,
                 existing_evac_plans=evac_plans,
             )
@@ -463,7 +462,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
             not_ok = [ab for ab in need_reroute_pairs if ab not in ok_local]
             if not_ok:
-                for (a, b) in not_ok:
+                for a, b in not_ok:
                     key = frozenset({a, b})
                     meet = fixed_meetings.get(key)
                     if meet is not None:
@@ -484,31 +483,28 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
     ) -> set[tuple[int, int]]:
         need: set[tuple[int, int]] = set()
 
-        for (a, b) in layer_pairs:
+        for a, b in layer_pairs:
             key = frozenset({a, b})
             if key not in fixed_meetings:
                 continue
             meet = fixed_meetings[key]
 
-            cut_a = DefaultRoutingPlanner._retime_until_pre_in_wait(to_meeting_plans[a], meet, 0)
-            cut_b = DefaultRoutingPlanner._retime_until_pre_in_wait(to_meeting_plans[b], meet, 0)
+            cut_a = DefaultRoutingPlanner.retime_until_pre_in_wait(to_meeting_plans[a], meet, 0)
+            cut_b = DefaultRoutingPlanner.retime_until_pre_in_wait(to_meeting_plans[b], meet, 0)
             if cut_a is None or cut_b is None:
                 need.add((a, b))
                 continue
 
-            if DefaultRoutingPlanner._path_uses_defective_edge(cut_a, defective_edges):
+            if DefaultRoutingPlanner.path_uses_defective_edge(cut_a, defective_edges):
                 need.add((a, b))
                 continue
-            if DefaultRoutingPlanner._path_uses_defective_edge(cut_b, defective_edges):
+            if DefaultRoutingPlanner.path_uses_defective_edge(cut_b, defective_edges):
                 need.add((a, b))
                 continue
 
             pre_a = cut_a[-1][0]
             pre_b = cut_b[-1][0]
-            if (
-                frozenset({pre_a, meet}) in defective_edges
-                or frozenset({pre_b, meet}) in defective_edges
-            ):
+            if frozenset({pre_a, meet}) in defective_edges or frozenset({pre_b, meet}) in defective_edges:
                 need.add((a, b))
 
         return need
@@ -521,16 +517,16 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         tried_meetings: dict[frozenset, set[Coord]],
     ) -> tuple[dict[int, list[TimedNode]], int]:
         pre_in_paths: dict[int, list[TimedNode]] = {}
-        T_pre_sync = 0
+        t_pre_sync = 0
 
-        for (a, b) in layer_pairs:
+        for a, b in layer_pairs:
             key = frozenset({a, b})
             if key not in fixed_meetings:
                 continue
 
             meet = fixed_meetings[key]
-            pa = DefaultRoutingPlanner._retime_until_pre_in_wait(to_meeting_plans[a], meet, 0)
-            pb = DefaultRoutingPlanner._retime_until_pre_in_wait(to_meeting_plans[b], meet, 0)
+            pa = DefaultRoutingPlanner.retime_until_pre_in_wait(to_meeting_plans[a], meet, 0)
+            pb = DefaultRoutingPlanner.retime_until_pre_in_wait(to_meeting_plans[b], meet, 0)
             if pa is None or pb is None:
                 RerouteRoutingPlanner._mark_meeting_failed(tried_meetings, (a, b), meet)
                 to_meeting_plans.pop(a, None)
@@ -541,11 +537,11 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             pre_in_paths[a] = pa
             pre_in_paths[b] = pb
             if pa:
-                T_pre_sync = max(T_pre_sync, pa[-1][1])
+                t_pre_sync = max(t_pre_sync, pa[-1][1])
             if pb:
-                T_pre_sync = max(T_pre_sync, pb[-1][1])
+                t_pre_sync = max(t_pre_sync, pb[-1][1])
 
-        return pre_in_paths, T_pre_sync
+        return pre_in_paths, t_pre_sync
 
     @staticmethod
     def _execute_layer_batches(
@@ -558,14 +554,13 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         evac_plans: dict[int, list[TimedNode]],
         to_meeting_plans: dict[int, list[TimedNode]],
         fixed_meetings: dict[frozenset, Coord],
-        T_pre_sync: int,
+        t_pre_sync: int,
         tried_meetings: dict[frozenset, set[Coord]],
         layers: list[list[tuple[int, int]]],
         idx: int,
     ) -> None:
         if evac_plans and any(
-            DefaultRoutingPlanner._path_uses_defective_edge(path, defective_edges)
-            for path in evac_plans.values()
+            DefaultRoutingPlanner.path_uses_defective_edge(path, defective_edges) for path in evac_plans.values()
         ):
             evac_plans.clear()
 
@@ -573,7 +568,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             micro_evacuate: dict[int, list[TimedNode]] = dict(evac_plans.items())
             dur = max((p[-1][1] for p in micro_evacuate.values()), default=0)
 
-            for qid in (all_qids - set(micro_evacuate.keys())):
+            for qid in all_qids - set(micro_evacuate.keys()):
                 micro_evacuate[qid] = [(current_pos[qid], 0), (current_pos[qid], dur)]
 
             batch_plans.append(micro_evacuate)
@@ -585,18 +580,14 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         micro_to_pre: dict[int, list[TimedNode]] = {}
         exec_layer_qids: set[int] = set()
 
-        for (a, b) in layer_pairs:
+        for a, b in layer_pairs:
             key = frozenset({a, b})
             if key not in fixed_meetings:
                 continue
 
             meet = fixed_meetings[key]
-            cut_a = DefaultRoutingPlanner._retime_until_pre_in_wait(
-                to_meeting_plans[a], meet, T_pre_sync
-            )
-            cut_b = DefaultRoutingPlanner._retime_until_pre_in_wait(
-                to_meeting_plans[b], meet, T_pre_sync
-            )
+            cut_a = DefaultRoutingPlanner.retime_until_pre_in_wait(to_meeting_plans[a], meet, t_pre_sync)
+            cut_b = DefaultRoutingPlanner.retime_until_pre_in_wait(to_meeting_plans[b], meet, t_pre_sync)
 
             if cut_a is None or cut_b is None:
                 RerouteRoutingPlanner._mark_meeting_failed(tried_meetings, (a, b), meet)
@@ -610,7 +601,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             exec_layer_qids.update({a, b})
 
         dur_pre = max((p[-1][1] for p in micro_to_pre.values()), default=0)
-        for qid in (all_qids - exec_layer_qids):
+        for qid in all_qids - exec_layer_qids:
             micro_to_pre[qid] = [(current_pos[qid], 0), (current_pos[qid], dur_pre)]
 
         batch_plans.append(micro_to_pre)
@@ -622,7 +613,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
         micro_in: dict[int, list[TimedNode]] = {}
         spill_after_micro: list[tuple[int, int]] = []
 
-        for (a, b) in layer_pairs:
+        for a, b in layer_pairs:
             key = frozenset({a, b})
             if key not in fixed_meetings:
                 continue
@@ -631,10 +622,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             pre_a = current_pos[a]
             pre_b = current_pos[b]
 
-            if (
-                frozenset({pre_a, meet}) in defective_edges
-                or frozenset({pre_b, meet}) in defective_edges
-            ):
+            if frozenset({pre_a, meet}) in defective_edges or frozenset({pre_b, meet}) in defective_edges:
                 spill_after_micro.append((a, b))
                 micro_in[a] = [(pre_a, 0), (pre_a, 2)]
                 micro_in[b] = [(pre_b, 0), (pre_b, 2)]
@@ -643,14 +631,14 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 micro_in[b] = [(pre_b, 0), (meet, 1), (pre_b, 2)]
 
         active_layer_qids = {q for ab in layer_pairs if frozenset(ab) in fixed_meetings for q in ab}
-        for qid in (all_qids - active_layer_qids):
+        for qid in all_qids - active_layer_qids:
             micro_in[qid] = [(current_pos[qid], 0), (current_pos[qid], 2)]
 
         batch_plans.append(micro_in)
         RerouteRoutingPlanner._snapshot_defects(batch_defects, defective_edges, 1)
 
         if spill_after_micro:
-            for (a, b) in spill_after_micro:
+            for a, b in spill_after_micro:
                 key = frozenset({a, b})
                 meet = fixed_meetings.get(key)
                 if meet is not None:
@@ -659,7 +647,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
             layers[idx + 1 : idx + 1] = [spill_after_micro]
 
-        for a, b in [tuple(sorted(k)) for k in fixed_meetings.keys()]:
+        for a, b in [tuple(sorted(k)) for k in fixed_meetings]:
             tried_meetings.pop(frozenset({a, b}), None)
 
     @staticmethod
@@ -676,22 +664,22 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
     @staticmethod
     def _common_triangle_candidates(
-        G: nx.Graph,
+        graph: nx.Graph,
         u: Coord,
         v: Coord,
         banned_nodes: set[Coord] | None = None,
     ) -> list[Coord]:
         banned_nodes = banned_nodes or set()
-        Nu = set(G.neighbors(u))
-        Nv = set(G.neighbors(v))
-        cand = list(Nu & Nv)
-        cand = [w for w in cand if w != u and w != v and w not in banned_nodes]
-        cand.sort(key=lambda c: (c[0], c[1]))
+        neighbors_u = set(graph.neighbors(u))
+        neighbors_v = set(graph.neighbors(v))
+        cand = list(neighbors_u & neighbors_v)
+        cand = [w for w in cand if w not in {u, v} and w not in banned_nodes]
+        cand.sort(key=operator.itemgetter(0, 1))
         return cand
 
     @staticmethod
     def _patch_path_with_triangle_bypass(
-        G: nx.Graph,
+        graph: nx.Graph,
         path: list[TimedNode],
         defective_edges: set[frozenset],
         blocked_nodes_static: set[Coord] | None = None,
@@ -714,7 +702,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 continue
 
             candidates = RerouteRoutingPlanner._common_triangle_candidates(
-                G, u, v, banned_nodes=blocked_nodes_static
+                graph, u, v, banned_nodes=blocked_nodes_static
             )
 
             picked_w: Coord | None = None
@@ -730,38 +718,31 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                 new_path.append((v, tv))
                 continue
 
-            new_path.append((picked_w, tu + 1))
-            new_path.append((v, tu + 2))
+            new_path.extend(((picked_w, tu + 1), (v, tu + 2)))
             total_extra += 1
 
         return new_path
 
     @staticmethod
     def _try_local_triangle_bypass_for_pairs(
-        G: nx.Graph,
+        graph: nx.Graph,
         current_pos: dict[int, Coord],
-        layer_pairs: list[tuple[int, int]],
         fixed_meetings: dict[frozenset, Coord],
         keep_pairs: set[tuple[int, int]],
         defective_edges: set[frozenset],
-        layer_starts: set[Coord],
         existing_layer_plans: dict[int, list[TimedNode]] | None,
         existing_evac_plans: dict[int, list[TimedNode]] | None,
     ) -> tuple[set[tuple[int, int]], dict[int, list[TimedNode]]]:
         ok_pairs: set[tuple[int, int]] = set()
         new_plans: dict[int, list[TimedNode]] = {}
 
-        res_base = Reservations(G, blocked_edges=defective_edges)
+        res_base = Reservations(graph, blocked_edges=defective_edges)
 
         skip_qids: set[int] = {q for ab in keep_pairs for q in ab}
         if existing_layer_plans:
-            RerouteRoutingPlanner._reserve_existing_plans(
-                res_base, existing_layer_plans, skip_qids=skip_qids
-            )
+            RerouteRoutingPlanner._reserve_existing_plans(res_base, existing_layer_plans, skip_qids=skip_qids)
         if existing_evac_plans:
-            RerouteRoutingPlanner._reserve_existing_plans(
-                res_base, existing_evac_plans, skip_qids=None
-            )
+            RerouteRoutingPlanner._reserve_existing_plans(res_base, existing_evac_plans, skip_qids=None)
 
         moving_qids: set[int] = set()
         if existing_layer_plans:
@@ -770,13 +751,11 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             moving_qids |= set(existing_evac_plans.keys())
 
         stationary_nodes: set[Coord] = {
-            current_pos[qid]
-            for qid in current_pos.keys()
-            if (qid not in moving_qids) and (qid not in skip_qids)
+            current_pos[qid] for qid in current_pos if (qid not in moving_qids) and (qid not in skip_qids)
         }
         for node in stationary_nodes:
             cap = res_base.node_capacity(node)
-            for t in range(0, MAX_TIME + 1):
+            for t in range(MAX_TIME + 1):
                 res_base.node_caps[node][t] = cap
         for node in stationary_nodes:
             Reservations.commit(res_base, [(node, 0), (node, MAX_TIME)])
@@ -791,12 +770,12 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                     pth = existing_layer_plans.get(qid)
                     if not pth:
                         continue
-                    pin = DefaultRoutingPlanner._entry_sn_from_path(pth, meet)
+                    pin = DefaultRoutingPlanner.entry_sn_from_path(pth, meet)
                     if pin is not None:
                         placed_preins.add(pin)
             for pin in placed_preins:
                 cap = res_base.node_capacity(pin)
-                for t in range(0, MAX_TIME + 1):
+                for t in range(MAX_TIME + 1):
                     res_base.node_caps[pin][t] = cap
 
         evac_target_nodes: set[Coord] = set()
@@ -806,7 +785,7 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
                     evac_target_nodes.add(p[-1][0])
         for node in evac_target_nodes:
             cap = res_base.node_capacity(node)
-            for t in range(0, MAX_TIME + 1):
+            for t in range(MAX_TIME + 1):
                 res_base.node_caps[node][t] = cap
 
         blocked_nodes_static: set[Coord] = set(stationary_nodes)
@@ -816,39 +795,41 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
 
         order = sorted(
             keep_pairs,
-            key=lambda ab: md(current_pos[ab[0]], fixed_meetings[frozenset(ab)])
-            + md(current_pos[ab[1]], fixed_meetings[frozenset(ab)]),
+            key=lambda ab: (
+                md(current_pos[ab[0]], fixed_meetings[frozenset(ab)])
+                + md(current_pos[ab[1]], fixed_meetings[frozenset(ab)])
+            ),
         )
 
-        for (a, b) in order:
+        for a, b in order:
             meet = fixed_meetings[frozenset({a, b})]
             pa = existing_layer_plans.get(a) if existing_layer_plans else None
             pb = existing_layer_plans.get(b) if existing_layer_plans else None
             if pa is None or pb is None:
                 continue
 
-            uses_defect_a = DefaultRoutingPlanner._path_uses_defective_edge(pa, defective_edges)
-            uses_defect_b = DefaultRoutingPlanner._path_uses_defective_edge(pb, defective_edges)
+            uses_defect_a = DefaultRoutingPlanner.path_uses_defective_edge(pa, defective_edges)
+            uses_defect_b = DefaultRoutingPlanner.path_uses_defective_edge(pb, defective_edges)
             if not (uses_defect_a or uses_defect_b):
                 continue
 
             pa_patched = (
                 RerouteRoutingPlanner._patch_path_with_triangle_bypass(
-                    G, pa, defective_edges, blocked_nodes_static=blocked_nodes_static
+                    graph, pa, defective_edges, blocked_nodes_static=blocked_nodes_static
                 )
                 if uses_defect_a
                 else pa
             )
             pb_patched = (
                 RerouteRoutingPlanner._patch_path_with_triangle_bypass(
-                    G, pb, defective_edges, blocked_nodes_static=blocked_nodes_static
+                    graph, pb, defective_edges, blocked_nodes_static=blocked_nodes_static
                 )
                 if uses_defect_b
                 else pb
             )
 
-            pre_a = DefaultRoutingPlanner._entry_sn_from_path(pa_patched, meet)
-            pre_b = DefaultRoutingPlanner._entry_sn_from_path(pb_patched, meet)
+            pre_a = DefaultRoutingPlanner.entry_sn_from_path(pa_patched, meet)
+            pre_b = DefaultRoutingPlanner.entry_sn_from_path(pb_patched, meet)
             if pre_a is None or pre_b is None:
                 continue
             if pre_a == pre_b:
@@ -860,12 +841,12 @@ class RerouteRoutingPlanner(DefaultRoutingPlanner, RoutingStrategy):
             try:
                 Reservations.commit(res_try, pa_patched)
                 Reservations.commit(res_try, pb_patched)
-            except Exception:
+            except IndexError:
                 continue
 
-            if DefaultRoutingPlanner._path_uses_defective_edge(pa_patched, defective_edges):
+            if DefaultRoutingPlanner.path_uses_defective_edge(pa_patched, defective_edges):
                 continue
-            if DefaultRoutingPlanner._path_uses_defective_edge(pb_patched, defective_edges):
+            if DefaultRoutingPlanner.path_uses_defective_edge(pb_patched, defective_edges):
                 continue
 
             Reservations.commit(res_base, pa_patched)

@@ -1,9 +1,15 @@
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
 from __future__ import annotations
 
 from typing import Final, TypeAlias
 
 import networkx as nx
-
 
 Coord: TypeAlias = tuple[int, int]
 
@@ -18,9 +24,7 @@ _TILE_POSITIONS: Final[dict[int, Coord]] = {
     7: (1, -1),
 }
 
-_INTERACTION_NODE_IDS: Final[frozenset[int]] = frozenset(
-    {0, 2, 5, 7}
-)
+_INTERACTION_NODE_IDS: Final[frozenset[int]] = frozenset({0, 2, 5, 7})
 
 
 class NetworkBuilder:
@@ -29,15 +33,9 @@ class NetworkBuilder:
         width: int,
         height: int,
     ) -> nx.Graph:
-        if not (
-            isinstance(width, int)
-            and isinstance(height, int)
-            and width >= 1
-            and height >= 1
-        ):
-            raise ValueError(
-                "width and height must be integers >= 1"
-            )
+        if not (isinstance(width, int) and isinstance(height, int) and width >= 1 and height >= 1):
+            msg = "width and height must be integers >= 1"
+            raise ValueError(msg)
 
         graph = nx.Graph()
 
@@ -55,11 +53,7 @@ class NetworkBuilder:
                     if coordinate in graph:
                         continue
 
-                    node_type = (
-                        "IN"
-                        if tile_id in _INTERACTION_NODE_IDS
-                        else "SN"
-                    )
+                    node_type = "IN" if tile_id in _INTERACTION_NODE_IDS else "SN"
                     graph.add_node(
                         coordinate,
                         type=node_type,
