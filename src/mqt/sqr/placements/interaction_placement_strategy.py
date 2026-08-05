@@ -5,7 +5,7 @@ from typing import Final
 
 import networkx as nx
 
-from placements.placement_strategy import PlacementStrategy
+from src.mqt.sqr.placements.placement_strategy import PlacementStrategy
 
 
 DECAY: Final = 0.9

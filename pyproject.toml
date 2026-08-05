@@ -1,0 +1,187 @@
+[build-system]
+requires = ["uv_build>=0.12.0,<0.13.0"]
+build-backend = "uv_build"
+
+[project]
+name = "mqt-sqr"
+version = "0.1.0"
+description = "MQT SQR"
+readme = "README.md"
+authors = [
+    { name = "Julian Shen", email = "julian.shen@tum.de" },
+]
+keywords = ["MQT", "quantum computing"]
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+
+dependencies = [
+    "kiwisolver>=1.5.0",
+    "matplotlib>=3.7.1",
+    "matplotlib>=3.8; python_version >= '3.12'",
+    "matplotlib>=3.10; python_version >= '3.13'",
+    "matplotlib>=3.10.5; python_version >= '3.14'",
+    "networkx>=2.8.8",
+    "numpy>=1.22",
+    "numpy>=1.24; python_version >= '3.11'",
+    "numpy>=1.26; python_version >= '3.12'",
+    "numpy>=2.1; python_version >= '3.13'",
+    "numpy>=2.3.2; python_version >= '3.14'",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/munich-quantum-toolkit/spin-qubit-routing"
+"Bug Tracker" = "https://github.com/munich-quantum-toolkit/spin-qubit-routing/issues"
+Discussions = "https://github.com/munich-quantum-toolkit/spin-qubit-routing/discussions"
+Research = "https://www.cda.cit.tum.de/research/quantum/"
+
+
+[tool.pytest]
+minversion = "9.0"
+testpaths = ["tests"]
+strict = true
+addopts = [
+    "-ra",
+    "--showlocals",
+    "--numprocesses=auto", # Automatically use all available CPU cores for parallel testing
+]
+log_level = "INFO"
+filterwarnings = [
+    "error",
+]
+
+[tool.coverage]
+run.source = ["mqt.sqr"]
+run.core = "sysmon"
+run.parallel = true
+run.disable_warnings = [
+    "no-sysmon",
+]
+report.exclude_also = [
+    '\.\.\.',
+    'if TYPE_CHECKING:',
+    'raise AssertionError',
+    'raise NotImplementedError',
+]
+show_missing = true
+skip_empty = true
+precision = 1
+
+
+[tool.ruff]
+line-length = 120
+namespace-packages = ["mqt"]
+preview = true
+fix = true
+unsafe-fixes = true
+show-fixes = true
+
+[tool.ruff.format]
+preview = true
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "C90",     # <...> too complex
+    "COM812",  # Conflicts with formatter
+    "PLR09",   # Too many <...>
+    "PLR2004", # Magic value used in comparison
+    "S101",    # Use of assert detected
+    "S404",    # `subprocess` module is possibly insecure
+    "TID252"   # Prefer absolute imports over relative imports from parent modules
+]
+future-annotations = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["mqt.sqr"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+
+[tool.uv]
+required-version = ">=0.8.17"
+
+[tool.uv.build-backend]
+module-name = "mqt.sqr"
+
+[tool.uv.sources]
+mqt-sqr = { workspace = true }
+
+
+[tool.typos]
+default.extend-ignore-re = [
+    '"id": ".*",',
+    "(?Rm)^.*(#|//)\\s*spellchecker:disable-line$", # ignore line
+    "(?s)(#|//)\\s*spellchecker:off.*?\\n\\s*(#|//)\\s*spellchecker:on" # ignore block
+]
+
+[tool.typos.default.extend-words]
+wille = "wille"
+
+
+[tool.repo-review.ignore]
+GH200 = "We use Renovate instead of Dependabot"
+MY100 = "We use ty instead of mypy"
+PC111 = "We use ruff instead of blacken-docs"
+PC160 = "We use a mirror of crate-ci/typos"
+PC170 = "We do not use rST files anymore"
+
+
+[tool.ty.terminal]
+# Error if ty emits any warning-level diagnostics.
+error-on-warning = true
+
+[tool.ty.src]
+exclude = [
+    "docs/**",
+]
+
+
+[dependency-groups]
+test = [
+    "pytest>=9.0.1",
+    "pytest-console-scripts>=1.4.1",
+    "pytest-cov>=7.1.0",
+    "pytest-sugar>=1.1.1",
+    "pytest-xdist>=3.8.0",
+]
+docs = [
+    "furo>=2025.09.25",
+    "myst-nb>=1.3.0",
+    "sphinx>=8.1.3",
+    "sphinx>=8.2.3; python_version >= '3.11'",
+    "sphinx-design>=0.6.1",
+    "sphinx-llm",
+    "sphinx-autoapi>=3.6.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinxcontrib-bibtex>=2.6.5",
+    "sphinxcontrib-svg2pdfconverter>=1.3.0",
+    "sphinxext-opengraph>=0.13.0",
+]
+dev = [
+    {include-group = "test"},
+    "nox>=2025.11.12",
+    "prek>=0.2.27",
+]

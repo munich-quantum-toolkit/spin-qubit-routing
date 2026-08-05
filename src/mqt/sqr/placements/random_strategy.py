@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 
-from placements.placement_strategy import PlacementStrategy
+from src.mqt.sqr.placements.placement_strategy import PlacementStrategy
 
 
 class RandomPlacementStrategy(PlacementStrategy):
