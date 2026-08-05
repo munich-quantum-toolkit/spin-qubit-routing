@@ -27,6 +27,7 @@ dependencies = [
     "numpy>=1.26; python_version >= '3.12'",
     "numpy>=2.1; python_version >= '3.13'",
     "numpy>=2.3.2; python_version >= '3.14'",
+    "typing_extensions>=4.16.0",
 ]
 
 classifiers = [
@@ -108,12 +109,21 @@ ignore = [
     "PLR09",   # Too many <...>
     "PLR2004", # Magic value used in comparison
     "S101",    # Use of assert detected
+    "S311",    # Standard pseudo-random generators are not suitable for cryptographic purposes
     "S404",    # `subprocess` module is possibly insecure
+]
+extend-ignore = [
+    "D",       # We do not have docstrings yet
+    "PLR1702", # Too many nested blocks
 ]
 future-annotations = true
 
 [tool.ruff.lint.isort]
 known-first-party = ["mqt.sqr"]
+
+[tool.ruff.lint.per-file-ignores]
+"eval/**" = ["INP001"]
+"examples/**" = ["INP001"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -13,11 +13,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 import networkx as nx
+from typing_extensions import override
 
 from mqt.sqr.routing.default_routing import DefaultRoutingPlanner
 from mqt.sqr.routing.routing_strategy import RoutingResult, RoutingStrategy
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mqt.sqr.routing.common import Coord, Qubit, TimedNode
 
 MAX_WAIT_TIME = 100
@@ -38,8 +41,8 @@ def _is_diag(u: Coord, v: Coord) -> bool:
 @dataclass(frozen=True)
 class _Step:
     updates_pair_only: dict[int, Coord]
-    sample: bool
     loops: list[tuple[list[Coord], int]]
+    sample: bool
 
 
 @dataclass
@@ -58,7 +61,7 @@ class _Plan:
 class _RoutingContext:
     def __init__(
         self,
-        G: nx.Graph,
+        graph: nx.Graph,
         qubits: list[Qubit],
         p_success: float,
         p_repair: float,
@@ -66,7 +69,7 @@ class _RoutingContext:
         max_wait_time: int | None = None,
         stuck_error_prefix: str = "Routing stuck",
     ) -> None:
-        self.G = G
+        self.graph = graph
         self.p_success = p_success
         self.p_repair = p_repair
         self.max_wait_time = max_wait_time
@@ -83,19 +86,19 @@ class _RoutingContext:
 
         self.wait_streak = 0 if max_wait_time is not None else None
 
-        sn_nodes = [n for n in self.G.nodes() if self.is_sn(n)]
-        self.SN = self.G.subgraph(sn_nodes).copy()
+        sn_nodes = [n for n in self.graph.nodes() if self.is_sn(n)]
+        self.SN = self.graph.subgraph(sn_nodes).copy()
 
     def is_sn(self, n: Coord) -> bool:
-        return self.G.nodes[n].get("type") == "SN"
+        return self.graph.nodes[n].get("type") == "SN"
 
     def is_in(self, n: Coord) -> bool:
-        return self.G.nodes[n].get("type") == "IN"
+        return self.graph.nodes[n].get("type") == "IN"
 
     def sn_neighbors_of_meet(self, meeting: Coord) -> list[Coord]:
         if not self.is_in(meeting):
             return []
-        return [w for w in self.G.neighbors(meeting) if self.is_sn(w)]
+        return [w for w in self.graph.neighbors(meeting) if self.is_sn(w)]
 
     def shortest_path_sn(self, src: Coord, dst: Coord) -> list[Coord] | None:
         try:
@@ -104,7 +107,7 @@ class _RoutingContext:
             return None
 
     def sample_edge_failures(self) -> None:
-        for u, v in self.G.edges():
+        for u, v in self.graph.edges():
             e = _edgeset(u, v)
             if e in self.defective_edges:
                 if random.random() < self.p_repair:
@@ -145,13 +148,12 @@ class _RoutingContext:
 
         self.edge_timebands.append((self.t - 1, self.t, set(self.defective_edges)))
 
-        if self.wait_streak is not None and self.max_wait_time is not None:
-            if self.wait_streak >= self.max_wait_time:
-                msg = (
-                    f"{self.stuck_error_prefix}: {self.wait_streak} aufeinanderfolgende "
-                    f"Timesteps ohne Bewegung (t={self.t})."
-                )
-                raise RuntimeError(msg)
+        if self.wait_streak is not None and self.max_wait_time is not None and self.wait_streak >= self.max_wait_time:
+            msg = (
+                f"{self.stuck_error_prefix}: {self.wait_streak} aufeinanderfolgende "
+                f"Timesteps ohne Bewegung (t={self.t})."
+            )
+            raise RuntimeError(msg)
 
         return moved
 
@@ -193,19 +195,19 @@ class _LoopHelpers:
 
 class _DiamondHelpers:
     @staticmethod
-    def diag_sn_neighbors(G: nx.Graph, is_sn_fn, n: Coord) -> list[Coord]:
+    def diag_sn_neighbors(graph: nx.Graph, is_sn_fn: Callable[[Coord], bool], n: Coord) -> list[Coord]:
         if not is_sn_fn(n):
             return []
-        return [w for w in G.neighbors(n) if is_sn_fn(w) and _is_diag(n, w)]
+        return [w for w in graph.neighbors(n) if is_sn_fn(w) and _is_diag(n, w)]
 
     @staticmethod
-    def diamond_for_edge(G: nx.Graph, is_sn_fn, u: Coord, v: Coord) -> list[Coord] | None:
+    def diamond_for_edge(graph: nx.Graph, is_sn_fn: Callable[[Coord], bool], u: Coord, v: Coord) -> list[Coord] | None:
         if not (is_sn_fn(u) and is_sn_fn(v) and _is_diag(u, v)):
             return None
-        Su = [w for w in _DiamondHelpers.diag_sn_neighbors(G, is_sn_fn, u) if w != v]
-        Sv = [x for x in _DiamondHelpers.diag_sn_neighbors(G, is_sn_fn, v) if x != u]
-        for w in Su:
-            for x in Sv:
+        s_u = [w for w in _DiamondHelpers.diag_sn_neighbors(graph, is_sn_fn, u) if w != v]
+        s_v = [x for x in _DiamondHelpers.diag_sn_neighbors(graph, is_sn_fn, v) if x != u]
+        for w in s_u:
+            for x in s_v:
                 if _is_diag(w, x):
                     return [u, v, x, w]
         return None
@@ -287,8 +289,8 @@ class _PlannerCommon:
                 return True
         return False
 
+    @staticmethod
     def plans_compatible_distance(
-        self,
         p1: _Plan,
         ab1: tuple[int, int],
         p2: _Plan,
@@ -296,7 +298,7 @@ class _PlannerCommon:
     ) -> bool:
         a1, b1 = ab1
         a2, b2 = ab2
-        L = max(p1.length, p2.length)
+        length = max(p1.length, p2.length)
 
         def pos(plan: _Plan, qid: int, i: int) -> Coord:
             trace = plan.pos_trace[qid]
@@ -304,7 +306,7 @@ class _PlannerCommon:
                 return trace[i]
             return trace[-1]
 
-        for i in range(L + 1):
+        for i in range(length + 1):
             p_a1 = pos(p1, a1, i)
             p_b1 = pos(p1, b1, i)
             p_a2 = pos(p2, a2, i)
@@ -315,9 +317,10 @@ class _PlannerCommon:
                         return False
         return True
 
-    def plans_compatible_loops(self, p1: _Plan, p2: _Plan) -> bool:
-        L = max(p1.length, p2.length)
-        for i in range(L):
+    @staticmethod
+    def plans_compatible_loops(p1: _Plan, p2: _Plan) -> bool:
+        length = max(p1.length, p2.length)
+        for i in range(length):
             d1 = {_LoopHelpers.canonical_loop_tuple(D) for D, _dir in p1.ticks[i].loops} if i < p1.length else set()
 
             d2 = {_LoopHelpers.canonical_loop_tuple(D) for D, _dir in p2.ticks[i].loops} if i < p2.length else set()
@@ -351,14 +354,15 @@ class _PlannerCommon:
 
         return groups
 
-    def build_pair_order(self, pairs: list[tuple[Qubit, Qubit]]) -> dict[tuple[int, int], int]:
+    @staticmethod
+    def build_pair_order(pairs: list[tuple[Qubit, Qubit]]) -> dict[tuple[int, int], int]:
         pair_order: dict[tuple[int, int], int] = {}
         for idx, (qa, qb) in enumerate(pairs):
             pair_order[qa.id, qb.id] = idx
         return pair_order
 
+    @staticmethod
     def is_ready_pair(
-        self,
         pid: tuple[int, int],
         remaining_pids: set[tuple[int, int]],
         pair_order: dict[tuple[int, int], int],
@@ -388,8 +392,8 @@ class _PlannerCommon:
     def choose_meeting(
         self, la: Coord, lb: Coord
     ) -> tuple[Coord, tuple[Coord, list[Coord]], tuple[Coord, list[Coord]]] | None:
-        cands = DefaultRoutingPlanner._best_meeting_candidates(
-            self.ctx.G, la, lb, reserved=set(), forbidden_nodes=set()
+        cands = DefaultRoutingPlanner.best_meeting_candidates(
+            self.ctx.graph, la, lb, reserved=set(), forbidden_nodes=set()
         )
         for m in cands:
             if not self.ctx.is_in(m):
@@ -424,7 +428,7 @@ class _PlannerCommon:
                     pid,
                     {a_id: self.ctx.current_pos[a_id], b_id: self.ctx.current_pos[b_id]},
                 )
-                s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
+                s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, [], sample=False)
 
             updates = self.expand_runtime_rotations(s.updates_pair_only, s.loops)
             moved = self.ctx.commit_tick(updates, sample=s.sample)
@@ -490,52 +494,52 @@ class _CirclePlannerEngine(_PlannerCommon):
         if not chosen:
             return None
 
-        meet, (preA, pathA), (preB, pathB) = chosen
+        meet, (pre_a, path_a), (pre_b, path_b) = chosen
         ticks: list[_Step] = []
         trace: dict[int, list[Coord]] = {a_id: [la], b_id: [lb]}
         used_loops: set[tuple[Coord, ...]] = set()
         in_idx: int | None = None
         out_idx: int | None = None
 
-        idxA = 0
-        idxB = 0
+        idx_a = 0
+        idx_b = 0
 
-        while la != preA or lb != preB:
+        while la != pre_a or lb != pre_b:
             updates: dict[int, Coord] = {}
             loops_for_step: list[tuple[list[Coord], int]] = []
 
-            if la != preA and idxA + 1 < len(pathA):
-                uA, vA = pathA[idxA], pathA[idxA + 1]
-                if _is_diag(uA, vA):
-                    loopA = self.circle_for_edge(uA, vA)
-                    if loopA:
-                        dirA = _LoopHelpers.rot_dir_loop(loopA, uA, vA)
-                        updA = _LoopHelpers.compute_pair_rotation_updates_for_loop(loopA, dirA, a_id, b_id, la, lb)
-                        updA[a_id] = vA
-                        updates.update(updA)
-                        loops_for_step.append((loopA, dirA))
-                        used_loops.add(_LoopHelpers.canonical_loop_tuple(loopA))
+            if la != pre_a and idx_a + 1 < len(path_a):
+                u_a, v_a = path_a[idx_a], path_a[idx_a + 1]
+                if _is_diag(u_a, v_a):
+                    loop_a = self.circle_for_edge(u_a, v_a)
+                    if loop_a:
+                        dir_a = _LoopHelpers.rot_dir_loop(loop_a, u_a, v_a)
+                        upd_a = _LoopHelpers.compute_pair_rotation_updates_for_loop(loop_a, dir_a, a_id, b_id, la, lb)
+                        upd_a[a_id] = v_a
+                        updates.update(upd_a)
+                        loops_for_step.append((loop_a, dir_a))
+                        used_loops.add(_LoopHelpers.canonical_loop_tuple(loop_a))
                     else:
-                        updates[a_id] = vA
+                        updates[a_id] = v_a
                 else:
-                    updates[a_id] = vA
+                    updates[a_id] = v_a
 
-            if lb != preB and idxB + 1 < len(pathB):
-                uB, vB = pathB[idxB], pathB[idxB + 1]
-                if _is_diag(uB, vB):
-                    loopB = self.circle_for_edge(uB, vB)
-                    if loopB:
-                        dirB = _LoopHelpers.rot_dir_loop(loopB, uB, vB)
-                        updB = _LoopHelpers.compute_pair_rotation_updates_for_loop(loopB, dirB, a_id, b_id, la, lb)
-                        updB[b_id] = vB
-                        if not (loops_for_step and set(loops_for_step[0][0]).intersection(loopB)):
-                            updates.update(updB)
-                            loops_for_step.append((loopB, dirB))
-                            used_loops.add(_LoopHelpers.canonical_loop_tuple(loopB))
+            if lb != pre_b and idx_b + 1 < len(path_b):
+                u_b, v_b = path_b[idx_b], path_b[idx_b + 1]
+                if _is_diag(u_b, v_b):
+                    loop_b = self.circle_for_edge(u_b, v_b)
+                    if loop_b:
+                        dir_b = _LoopHelpers.rot_dir_loop(loop_b, u_b, v_b)
+                        upd_b = _LoopHelpers.compute_pair_rotation_updates_for_loop(loop_b, dir_b, a_id, b_id, la, lb)
+                        upd_b[b_id] = v_b
+                        if not (loops_for_step and set(loops_for_step[0][0]).intersection(loop_b)):
+                            updates.update(upd_b)
+                            loops_for_step.append((loop_b, dir_b))
+                            used_loops.add(_LoopHelpers.canonical_loop_tuple(loop_b))
                     elif b_id not in updates:
-                        updates[b_id] = vB
+                        updates[b_id] = v_b
                 elif b_id not in updates:
-                    updates[b_id] = vB
+                    updates[b_id] = v_b
 
             if not updates:
                 return None
@@ -543,11 +547,11 @@ class _CirclePlannerEngine(_PlannerCommon):
             la = updates.get(a_id, la)
             lb = updates.get(b_id, lb)
             if a_id in updates:
-                idxA = min(idxA + 1, len(pathA) - 1)
+                idx_a = min(idx_a + 1, len(path_a) - 1)
             if b_id in updates:
-                idxB = min(idxB + 1, len(pathB) - 1)
+                idx_b = min(idx_b + 1, len(path_b) - 1)
 
-            ticks.append(_Step(updates, True, loops_for_step))
+            ticks.append(_Step(updates, loops_for_step, sample=True))
             trace[a_id].append(la)
             trace[b_id].append(lb)
 
@@ -561,14 +565,14 @@ class _CirclePlannerEngine(_PlannerCommon):
             la = updates_in.get(a_id, la)
             lb = updates_in.get(b_id, lb)
             in_idx = len(ticks)
-            ticks.append(_Step(updates_in, True, []))
+            ticks.append(_Step(updates_in, [], sample=True))
             trace[a_id].append(la)
             trace[b_id].append(lb)
 
         out_idx = len(ticks)
-        ticks.append(_Step({}, False, []))
-        trace[a_id].append(preA)
-        trace[b_id].append(preB)
+        ticks.append(_Step({}, [], sample=False))
+        trace[a_id].append(pre_a)
+        trace[b_id].append(pre_b)
 
         return _Plan(ticks, trace, used_loops, in_idx, out_idx)
 
@@ -601,11 +605,11 @@ class _CirclePlannerEngine(_PlannerCommon):
 
             for grp in groups:
                 group_qids: set[int] = {x for ab in grp for x in ab}
-                L = max(plans[pid].length for pid in grp) if grp else 0
+                length = max(plans[pid].length for pid in grp) if grp else 0
                 parallel_failed = False
                 step = 0
 
-                while step < L:
+                while step < length:
                     updates_pair_only: dict[int, Coord] = {}
                     sample_flags: list[bool] = []
                     step_loops: list[tuple[list[Coord], int]] = []
@@ -614,7 +618,7 @@ class _CirclePlannerEngine(_PlannerCommon):
 
                     for pid in grp:
                         plan = plans[pid]
-                        s = plan.ticks[step] if step < plan.length else _Step({}, True, [])
+                        s = plan.ticks[step] if step < plan.length else _Step({}, [], sample=True)
 
                         if plan.in_idx is not None and step == plan.in_idx:
                             a_id, b_id = pid
@@ -632,7 +636,7 @@ class _CirclePlannerEngine(_PlannerCommon):
                                     b_id: self.ctx.current_pos[b_id],
                                 },
                             )
-                            s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
+                            s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, [], sample=False)
 
                         if set(updates_pair_only.keys()) & set(s.updates_pair_only.keys()):
                             conflict = True
@@ -681,7 +685,7 @@ class _CirclePlannerEngine(_PlannerCommon):
 
 class _HybridPlannerEngine(_PlannerCommon):
     def diamond_for_edge(self, u: Coord, v: Coord) -> list[Coord] | None:
-        return _DiamondHelpers.diamond_for_edge(self.ctx.G, self.ctx.is_sn, u, v)
+        return _DiamondHelpers.diamond_for_edge(self.ctx.graph, self.ctx.is_sn, u, v)
 
     def circle_for_edge(
         self,
@@ -736,52 +740,56 @@ class _HybridPlannerEngine(_PlannerCommon):
         if not chosen:
             return None
 
-        meet, (preA, pathA), (preB, pathB) = chosen
+        meet, (pre_a, path_a), (pre_b, path_b) = chosen
         ticks: list[_Step] = []
         trace: dict[int, list[Coord]] = {a_id: [la], b_id: [lb]}
         used: set[tuple[Coord, ...]] = set()
         in_idx: int | None = None
         out_idx: int | None = None
 
-        idxA = 0
-        idxB = 0
+        idx_a = 0
+        idx_b = 0
 
-        while la != preA or lb != preB:
+        while la != pre_a or lb != pre_b:
             updates: dict[int, Coord] = {}
             loops_for_step: list[tuple[list[Coord], int]] = []
 
-            if la != preA and idxA + 1 < len(pathA):
-                uA, vA = pathA[idxA], pathA[idxA + 1]
-                if _is_diag(uA, vA):
-                    dA = self.diamond_for_edge(uA, vA)
-                    if dA:
-                        dirA = _DiamondHelpers.rot_dir_diamond(dA, uA, vA)
-                        updA = _DiamondHelpers.compute_pair_rotation_updates_for_diamond(dA, dirA, a_id, b_id, la, lb)
-                        updA[a_id] = vA
-                        updates.update(updA)
-                        loops_for_step.append((dA, dirA))
-                        used.add(_LoopHelpers.canonical_loop_tuple(dA))
+            if la != pre_a and idx_a + 1 < len(path_a):
+                u_a, v_a = path_a[idx_a], path_a[idx_a + 1]
+                if _is_diag(u_a, v_a):
+                    d_a = self.diamond_for_edge(u_a, v_a)
+                    if d_a:
+                        dir_a = _DiamondHelpers.rot_dir_diamond(d_a, u_a, v_a)
+                        upd_a = _DiamondHelpers.compute_pair_rotation_updates_for_diamond(
+                            d_a, dir_a, a_id, b_id, la, lb
+                        )
+                        upd_a[a_id] = v_a
+                        updates.update(upd_a)
+                        loops_for_step.append((d_a, dir_a))
+                        used.add(_LoopHelpers.canonical_loop_tuple(d_a))
                     else:
-                        updates[a_id] = vA
+                        updates[a_id] = v_a
                 else:
-                    updates[a_id] = vA
+                    updates[a_id] = v_a
 
-            if lb != preB and idxB + 1 < len(pathB):
-                uB, vB = pathB[idxB], pathB[idxB + 1]
-                if _is_diag(uB, vB):
-                    dB = self.diamond_for_edge(uB, vB)
-                    if dB:
-                        dirB = _DiamondHelpers.rot_dir_diamond(dB, uB, vB)
-                        updB = _DiamondHelpers.compute_pair_rotation_updates_for_diamond(dB, dirB, a_id, b_id, la, lb)
-                        updB[b_id] = vB
-                        if not (loops_for_step and set(loops_for_step[0][0]).intersection(dB)):
-                            updates.update(updB)
-                            loops_for_step.append((dB, dirB))
-                            used.add(_LoopHelpers.canonical_loop_tuple(dB))
+            if lb != pre_b and idx_b + 1 < len(path_b):
+                u_b, v_b = path_b[idx_b], path_b[idx_b + 1]
+                if _is_diag(u_b, v_b):
+                    d_b = self.diamond_for_edge(u_b, v_b)
+                    if d_b:
+                        dir_b = _DiamondHelpers.rot_dir_diamond(d_b, u_b, v_b)
+                        upd_b = _DiamondHelpers.compute_pair_rotation_updates_for_diamond(
+                            d_b, dir_b, a_id, b_id, la, lb
+                        )
+                        upd_b[b_id] = v_b
+                        if not (loops_for_step and set(loops_for_step[0][0]).intersection(d_b)):
+                            updates.update(upd_b)
+                            loops_for_step.append((d_b, dir_b))
+                            used.add(_LoopHelpers.canonical_loop_tuple(d_b))
                     elif b_id not in updates:
-                        updates[b_id] = vB
+                        updates[b_id] = v_b
                 elif b_id not in updates:
-                    updates[b_id] = vB
+                    updates[b_id] = v_b
 
             if not updates:
                 return None
@@ -789,11 +797,11 @@ class _HybridPlannerEngine(_PlannerCommon):
             la = updates.get(a_id, la)
             lb = updates.get(b_id, lb)
             if a_id in updates:
-                idxA = min(idxA + 1, len(pathA) - 1)
+                idx_a = min(idx_a + 1, len(path_a) - 1)
             if b_id in updates:
-                idxB = min(idxB + 1, len(pathB) - 1)
+                idx_b = min(idx_b + 1, len(path_b) - 1)
 
-            ticks.append(_Step(updates, True, loops_for_step))
+            ticks.append(_Step(updates, loops_for_step, sample=True))
             trace[a_id].append(la)
             trace[b_id].append(lb)
 
@@ -807,20 +815,20 @@ class _HybridPlannerEngine(_PlannerCommon):
             la = updates_in.get(a_id, la)
             lb = updates_in.get(b_id, lb)
             in_idx = len(ticks)
-            ticks.append(_Step(updates_in, True, []))
+            ticks.append(_Step(updates_in, [], sample=True))
             trace[a_id].append(la)
             trace[b_id].append(lb)
 
         out_idx = len(ticks)
-        ticks.append(_Step({}, False, []))
-        trace[a_id].append(preA)
-        trace[b_id].append(preB)
+        ticks.append(_Step({}, [], sample=False))
+        trace[a_id].append(pre_a)
+        trace[b_id].append(pre_b)
 
         return _Plan(ticks, trace, used, in_idx, out_idx)
 
-    def plan_pair_circle(self, a_id: int, b_id: int) -> _Plan | None:
-        la = self.ctx.current_pos[a_id]
-        lb = self.ctx.current_pos[b_id]
+    def plan_pair_circle(self, id_a: int, id_b: int) -> _Plan | None:
+        la = self.ctx.current_pos[id_a]
+        lb = self.ctx.current_pos[id_b]
         if not (self.ctx.is_sn(la) and self.ctx.is_sn(lb)):
             return None
 
@@ -828,85 +836,85 @@ class _HybridPlannerEngine(_PlannerCommon):
         if not chosen:
             return None
 
-        meet, (preA, pathA), (preB, pathB) = chosen
+        meet, (pre_a, path_a), (pre_b, path_b) = chosen
         ticks: list[_Step] = []
-        trace: dict[int, list[Coord]] = {a_id: [la], b_id: [lb]}
+        trace: dict[int, list[Coord]] = {id_a: [la], id_b: [lb]}
         used: set[tuple[Coord, ...]] = set()
         in_idx: int | None = None
         out_idx: int | None = None
 
-        idxA = 0
-        idxB = 0
+        idx_a = 0
+        idx_b = 0
 
-        while la != preA or lb != preB:
+        while la != pre_a or lb != pre_b:
             updates: dict[int, Coord] = {}
             loops_for_step: list[tuple[list[Coord], int]] = []
 
-            if la != preA and idxA + 1 < len(pathA):
-                uA, vA = pathA[idxA], pathA[idxA + 1]
-                if _is_diag(uA, vA):
-                    loopA = self.circle_for_edge(uA, vA)
-                    if loopA:
-                        dirA = _LoopHelpers.rot_dir_loop(loopA, uA, vA)
-                        updA = _LoopHelpers.compute_pair_rotation_updates_for_loop(loopA, dirA, a_id, b_id, la, lb)
-                        updA[a_id] = vA
-                        updates.update(updA)
-                        loops_for_step.append((loopA, dirA))
-                        used.add(_LoopHelpers.canonical_loop_tuple(loopA))
+            if la != pre_a and idx_a + 1 < len(path_a):
+                u_a, v_a = path_a[idx_a], path_a[idx_a + 1]
+                if _is_diag(u_a, v_a):
+                    loop_a = self.circle_for_edge(u_a, v_a)
+                    if loop_a:
+                        dir_a = _LoopHelpers.rot_dir_loop(loop_a, u_a, v_a)
+                        upd_a = _LoopHelpers.compute_pair_rotation_updates_for_loop(loop_a, dir_a, id_a, id_b, la, lb)
+                        upd_a[id_a] = v_a
+                        updates.update(upd_a)
+                        loops_for_step.append((loop_a, dir_a))
+                        used.add(_LoopHelpers.canonical_loop_tuple(loop_a))
                     else:
-                        updates[a_id] = vA
+                        updates[id_a] = v_a
                 else:
-                    updates[a_id] = vA
+                    updates[id_a] = v_a
 
-            if lb != preB and idxB + 1 < len(pathB):
-                uB, vB = pathB[idxB], pathB[idxB + 1]
-                if _is_diag(uB, vB):
-                    loopB = self.circle_for_edge(uB, vB)
-                    if loopB:
-                        dirB = _LoopHelpers.rot_dir_loop(loopB, uB, vB)
-                        updB = _LoopHelpers.compute_pair_rotation_updates_for_loop(loopB, dirB, a_id, b_id, la, lb)
-                        updB[b_id] = vB
-                        if not (loops_for_step and set(loops_for_step[0][0]).intersection(loopB)):
-                            updates.update(updB)
-                            loops_for_step.append((loopB, dirB))
-                            used.add(_LoopHelpers.canonical_loop_tuple(loopB))
-                    elif b_id not in updates:
-                        updates[b_id] = vB
-                elif b_id not in updates:
-                    updates[b_id] = vB
+            if lb != pre_b and idx_b + 1 < len(path_b):
+                u_b, v_b = path_b[idx_b], path_b[idx_b + 1]
+                if _is_diag(u_b, v_b):
+                    loop_b = self.circle_for_edge(u_b, v_b)
+                    if loop_b:
+                        dir_b = _LoopHelpers.rot_dir_loop(loop_b, u_b, v_b)
+                        upd_b = _LoopHelpers.compute_pair_rotation_updates_for_loop(loop_b, dir_b, id_a, id_b, la, lb)
+                        upd_b[id_b] = v_b
+                        if not (loops_for_step and set(loops_for_step[0][0]).intersection(loop_b)):
+                            updates.update(upd_b)
+                            loops_for_step.append((loop_b, dir_b))
+                            used.add(_LoopHelpers.canonical_loop_tuple(loop_b))
+                    elif id_b not in updates:
+                        updates[id_b] = v_b
+                elif id_b not in updates:
+                    updates[id_b] = v_b
 
             if not updates:
                 return None
 
-            la = updates.get(a_id, la)
-            lb = updates.get(b_id, lb)
-            if a_id in updates:
-                idxA = min(idxA + 1, len(pathA) - 1)
-            if b_id in updates:
-                idxB = min(idxB + 1, len(pathB) - 1)
+            la = updates.get(id_a, la)
+            lb = updates.get(id_b, lb)
+            if id_a in updates:
+                idx_a = min(idx_a + 1, len(path_a) - 1)
+            if id_b in updates:
+                idx_b = min(idx_b + 1, len(path_b) - 1)
 
-            ticks.append(_Step(updates, True, loops_for_step))
-            trace[a_id].append(la)
-            trace[b_id].append(lb)
+            ticks.append(_Step(updates, loops_for_step, sample=True))
+            trace[id_a].append(la)
+            trace[id_b].append(lb)
 
         updates_in: dict[int, Coord] = {}
         if la != meet:
-            updates_in[a_id] = meet
+            updates_in[id_a] = meet
         if lb != meet:
-            updates_in[b_id] = meet
+            updates_in[id_b] = meet
 
         if updates_in:
-            la = updates_in.get(a_id, la)
-            lb = updates_in.get(b_id, lb)
+            la = updates_in.get(id_a, la)
+            lb = updates_in.get(id_b, lb)
             in_idx = len(ticks)
-            ticks.append(_Step(updates_in, True, []))
-            trace[a_id].append(la)
-            trace[b_id].append(lb)
+            ticks.append(_Step(updates_in, [], sample=True))
+            trace[id_a].append(la)
+            trace[id_b].append(lb)
 
         out_idx = len(ticks)
-        ticks.append(_Step({}, False, []))
-        trace[a_id].append(preA)
-        trace[b_id].append(preB)
+        ticks.append(_Step({}, [], sample=False))
+        trace[id_a].append(pre_a)
+        trace[id_b].append(pre_b)
 
         return _Plan(ticks, trace, used, in_idx, out_idx)
 
@@ -939,11 +947,11 @@ class _HybridPlannerEngine(_PlannerCommon):
 
             for grp in groups:
                 group_qids: set[int] = {x for ab in grp for x in ab}
-                L = max(plans[pid].length for pid in grp) if grp else 0
+                length = max(plans[pid].length for pid in grp) if grp else 0
                 parallel_failed = False
                 step = 0
 
-                while step < L:
+                while step < length:
                     updates_pair_only: dict[int, Coord] = {}
                     sample_flags: list[bool] = []
                     step_loops: list[tuple[list[Coord], int]] = []
@@ -952,7 +960,7 @@ class _HybridPlannerEngine(_PlannerCommon):
 
                     for pid in grp:
                         plan = plans[pid]
-                        s = plan.ticks[step] if step < plan.length else _Step({}, True, [])
+                        s = plan.ticks[step] if step < plan.length else _Step({}, [], sample=True)
 
                         if plan.in_idx is not None and step == plan.in_idx:
                             a_id, b_id = pid
@@ -970,7 +978,7 @@ class _HybridPlannerEngine(_PlannerCommon):
                                     b_id: self.ctx.current_pos[b_id],
                                 },
                             )
-                            s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
+                            s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, [], sample=False)
 
                         if set(updates_pair_only.keys()) & set(s.updates_pair_only.keys()):
                             conflict = True
@@ -1019,7 +1027,7 @@ class _HybridPlannerEngine(_PlannerCommon):
                                         b_id: self.ctx.current_pos[b_id],
                                     },
                                 )
-                                s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
+                                s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, [], sample=False)
 
                             updates = self.expand_runtime_rotations(s.updates_pair_only, s.loops)
                             moved = self.ctx.commit_tick(updates, sample=s.sample)
@@ -1076,7 +1084,7 @@ class _HybridPlannerEngine(_PlannerCommon):
                                     pid,
                                     {a: self.ctx.current_pos[a], b: self.ctx.current_pos[b]},
                                 )
-                                s = _Step({a: pre_map[a], b: pre_map[b]}, False, [])
+                                s = _Step({a: pre_map[a], b: pre_map[b]}, [], sample=False)
 
                             updates = self.expand_runtime_rotations(s.updates_pair_only, s.loops)
                             moved = self.ctx.commit_tick(updates, sample=s.sample)
@@ -1105,28 +1113,29 @@ class _HybridPlannerEngine(_PlannerCommon):
 class CircleRotationRoutingPlanner:
     @staticmethod
     def route(
-        G: nx.Graph,
+        graph: nx.Graph,
         qubits: list[Qubit],
         pairs: list[tuple[Qubit, Qubit]],
         p_success: float,
         p_repair: float,
     ) -> RoutingResult:
-        ctx = _RoutingContext(G, qubits, p_success, p_repair)
+        ctx = _RoutingContext(graph, qubits, p_success, p_repair)
         engine = _CirclePlannerEngine(ctx)
         return engine.run(pairs)
 
 
 class HybridRotationRoutingPlanner(RoutingStrategy):
+    @override
     def route(
         self,
-        G: nx.Graph,
+        graph: nx.Graph,
         qubits: list[Qubit],
         pairs: list[tuple[Qubit, Qubit]],
         p_success: float,
         p_repair: float,
     ) -> RoutingResult:
         ctx = _RoutingContext(
-            G,
+            graph,
             qubits,
             p_success,
             p_repair,

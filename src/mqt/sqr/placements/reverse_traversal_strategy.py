@@ -11,6 +11,8 @@ import random
 from itertools import starmap
 from typing import TYPE_CHECKING
 
+from typing_extensions import override
+
 from mqt.sqr.placements.placement_strategy import PlacementStrategy
 from mqt.sqr.routing.common import Coord, Qubit
 from mqt.sqr.routing.rotation_routing import RotationRoutingPlanner
@@ -21,6 +23,7 @@ if TYPE_CHECKING:
 
 
 class ReverseTraversalPlacementStrategy(PlacementStrategy):
+    @override
     def place_qubits(
         self,
         sn_nodes: list[tuple[int, int]],

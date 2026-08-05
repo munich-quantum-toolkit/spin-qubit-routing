@@ -28,7 +28,7 @@ class RoutingStrategy(ABC):
     @abstractmethod
     def route(
         self,
-        G: nx.Graph,
+        graph: nx.Graph,
         qubits: list[Qubit],
         pairs: list[QubitPair],
         p_success: float,

@@ -34,12 +34,12 @@ class Qubit:
 class Reservations:
     def __init__(
         self,
-        G: nx.Graph,
+        graph: nx.Graph,
         blocked_edges: set[Edge] | None = None,
     ) -> None:
         self.node_caps: dict[Coord, dict[int, int]] = defaultdict(lambda: defaultdict(int))
         self.edge_caps: dict[Edge, dict[int, int]] = defaultdict(lambda: defaultdict(int))
-        self.node_type: dict[Coord, str] = {node: G.nodes[node]["type"] for node in G.nodes}
+        self.node_type: dict[Coord, str] = {node: graph.nodes[node]["type"] for node in graph.nodes}
         self.blocked_edges = blocked_edges or set()
 
     def node_capacity(self, node: Coord) -> int:
@@ -86,7 +86,7 @@ class Reservations:
 class AStar:
     @staticmethod
     def search(
-        G: nx.Graph,
+        graph: nx.Graph,
         start: Coord,
         goal: Coord,
         reservations: Reservations,
@@ -126,7 +126,7 @@ class AStar:
                 continue
 
             successors = [(node, time + 1, 0, 1)]
-            successors.extend((neighbor, time + 1, 1, 1) for neighbor in G.neighbors(node))
+            successors.extend((neighbor, time + 1, 1, 1) for neighbor in graph.neighbors(node))
 
             for next_node, next_time, move_delta, time_delta in successors:
                 if not reservations.can_occupy(next_node, next_time):

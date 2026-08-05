@@ -133,22 +133,23 @@ def _agent_sort_key(agent_id: AgentId) -> tuple[int, int | str]:
 
 
 def animate_mapf(
-    G: nx.Graph,
+    graph: nx.Graph,
     plans: Mapping[int, Sequence[TimedNode]],
     interval_ms: float = 0.1,
-    smooth: bool = True,
     substeps: int = 200,
     edge_timebands: Sequence[EdgeTimeBand] | None = None,
     failed_edges_timeline: Mapping[int, set[Edge]] | None = None,
+    *,
+    smooth: bool = True,
 ) -> FuncAnimation:
-    graph_positions = {node: node for node in G}
+    graph_positions = {node: node for node in graph}
 
     figure, axis = plt.subplots(
         figsize=(8, 8),
         constrained_layout=True,
     )
 
-    all_segments = [(graph_positions[source], graph_positions[target]) for source, target in G.edges]
+    all_segments = [(graph_positions[source], graph_positions[target]) for source, target in graph.edges]
     base_edges = LineCollection(
         all_segments,
         alpha=0.3,
@@ -166,11 +167,11 @@ def animate_mapf(
     )
     axis.add_collection(failed_edges)
 
-    interaction_nodes = [node for node, data in G.nodes(data=True) if data.get("type") == "IN"]
-    storage_nodes = [node for node, data in G.nodes(data=True) if data.get("type") == "SN"]
+    interaction_nodes = [node for node, data in graph.nodes(data=True) if data.get("type") == "IN"]
+    storage_nodes = [node for node, data in graph.nodes(data=True) if data.get("type") == "SN"]
 
     nx.draw_networkx_nodes(
-        G,
+        graph,
         graph_positions,
         nodelist=interaction_nodes,
         node_shape="s",
@@ -178,7 +179,7 @@ def animate_mapf(
         ax=axis,
     )
     nx.draw_networkx_nodes(
-        G,
+        graph,
         graph_positions,
         nodelist=storage_nodes,
         node_shape="o",

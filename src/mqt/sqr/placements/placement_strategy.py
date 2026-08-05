@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
 
 class PlacementStrategy(ABC):
+    @staticmethod
     def build_pairs(
-        self,
         n_qubits: int,
         rounds: int,
         max_pairs_per_round: int | None = None,

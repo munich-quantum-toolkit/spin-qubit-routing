@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import itertools
+import logging
 import pathlib
 import random
 import time
@@ -34,6 +35,9 @@ if TYPE_CHECKING:
     from mqt.sqr.routing.routing_strategy import RoutingStrategy
 
 
+logger = logging.getLogger(__name__)
+
+
 def count_movements(timelines: dict[int, list[TimedNode]]) -> int:
     moves = 0
     for path in timelines.values():
@@ -52,8 +56,8 @@ def total_timesteps(timelines: dict[int, list[TimedNode]]) -> int:
 
 
 def get_max_sn_nodes(width: int, height: int) -> int:
-    G: nx.Graph = NetworkBuilder.build_network(width, height)
-    return sum(1 for _, data in G.nodes(data=True) if data.get("type") == "SN")
+    graph: nx.Graph = NetworkBuilder.build_network(width, height)
+    return sum(1 for _, data in graph.nodes(data=True) if data.get("type") == "SN")
 
 
 def evaluate_strategy(
@@ -106,6 +110,7 @@ def evaluate_strategy(
             try:
                 timelines, _ = simulator.run()
             except Exception:
+                logger.exception("Simulation failed")
                 continue
 
             timesteps_samples.append(total_timesteps(timelines))
@@ -173,6 +178,7 @@ def evaluate_strategy_vs_edge_expectation(
             try:
                 timelines, _ = simulator.run()
             except Exception:
+                logger.exception("Simulation failed")
                 continue
 
             timesteps_samples.append(total_timesteps(timelines))
@@ -235,6 +241,7 @@ def evaluate_strategies_over_grids(
                 try:
                     timelines, _ = simulator.run()
                 except Exception:
+                    logger.exception("Simulation failed")
                     continue
 
                 timesteps_samples.append(total_timesteps(timelines))
@@ -294,6 +301,7 @@ def evaluate_placements_for_routing(
             try:
                 timelines, _ = simulator.run()
             except Exception:
+                logger.exception("Simulation failed")
                 continue
 
             timesteps_samples.append(total_timesteps(timelines))
@@ -364,6 +372,7 @@ def evaluate_exception_rates_for_strategies_3x3(
                 try:
                     simulator.run()
                 except Exception:
+                    logger.exception("Simulation failed")
                     fail_count += 1
 
             rate = fail_count / n_samples
@@ -381,7 +390,7 @@ def evaluate_exception_rates_for_strategies_3x3(
     plt.title("Exception-Rate vs. Qubit-Anzahl\n3x3-Grid, RandomPlacement, p_success=0.998, p_repair=0.25, 100 Samples")
     plt.xticks(n_qubits_list, rotation=45)
     plt.ylim(-0.05, 1.05)
-    plt.grid(True, which="both", linestyle="--", alpha=0.5)
+    plt.grid(visible=True, which="both", linestyle="--", alpha=0.5)
     plt.legend()
     plt.tight_layout()
     plt.savefig("D:\\Uni\\failrate_qubits.png")
@@ -414,9 +423,9 @@ def evaluate_exception_rates_vs_edge_expectation_3x3(
 
     strategy_dead: dict[str, bool] = dict.fromkeys(routing_strategies, False)
 
-    for E in expectation_values:
-        p_success = E
-        p_repair = E
+    for e in expectation_values:
+        p_success = e
+        p_repair = e
 
         for strat_name, routing_strategy in routing_strategies.items():
             if strategy_dead[strat_name]:
@@ -448,6 +457,7 @@ def evaluate_exception_rates_vs_edge_expectation_3x3(
                 try:
                     simulator.run()
                 except Exception:
+                    logger.exception("Simulation failed")
                     fail_count += 1
 
             rate = fail_count / n_samples
@@ -456,21 +466,21 @@ def evaluate_exception_rates_vs_edge_expectation_3x3(
             if rate >= 1.0:
                 strategy_dead[strat_name] = True
 
-    E_sorted = sorted(expectation_values)
+    e_sorted = sorted(expectation_values)
 
     plt.figure(figsize=(10, 6))
     for strat_name, rates in exception_rates.items():
-        E_to_rate = dict(zip(expectation_values, rates, strict=False))
-        rates_sorted = [E_to_rate[E] for E in E_sorted]
+        e_to_rate = dict(zip(expectation_values, rates, strict=False))
+        rates_sorted = [e_to_rate[e] for e in e_sorted]
 
-        plt.plot(E_sorted, rates_sorted, marker="o", label=strat_name)
+        plt.plot(e_sorted, rates_sorted, marker="o", label=strat_name)
 
     plt.xlabel("Erwartungswert E funktionierender Kanten")
     plt.ylabel("Exception-Rate")
     plt.title(f"Exception-Rate vs. Erwartungswert E\n3x3-Grid, n_qubits={n_qubits}, RandomPlacement, 100 Samples pro E")
-    plt.xticks(E_sorted, rotation=45)
+    plt.xticks(e_sorted, rotation=45)
     plt.ylim(-0.05, 1.05)
-    plt.grid(True, which="both", linestyle="--", alpha=0.5)
+    plt.grid(visible=True, which="both", linestyle="--", alpha=0.5)
     plt.legend()
     plt.tight_layout()
     plt.savefig("D:\\Uni\\failrate_expectation.png")
@@ -535,6 +545,7 @@ def evaluate_runtimes_for_strategies_3x3(
                 try:
                     simulator.run()
                 except Exception:
+                    logger.exception("Simulation failed")
                     fail_count += 1
                 finally:
                     duration = time.perf_counter() - start_t
@@ -558,7 +569,7 @@ def evaluate_runtimes_for_strategies_3x3(
         f"p_success={p_success}, p_repair={p_repair}, {n_samples} Samples"
     )
     plt.xticks(n_qubits_list, rotation=45)
-    plt.grid(True, which="both", linestyle="--", alpha=0.5)
+    plt.grid(visible=True, which="both", linestyle="--", alpha=0.5)
     plt.legend()
     plt.tight_layout()
     plt.savefig("D:\\Uni\\runtime_qubits.png")
@@ -622,6 +633,7 @@ def evaluate_strategy_with_errorbars(
             try:
                 timelines, _ = simulator.run()
             except Exception:
+                logger.exception("Simulation failed")
                 continue
 
             timesteps_samples.append(total_timesteps(timelines))
@@ -752,7 +764,7 @@ def plot_two_axis_with_errorbars(
 
         ax1.set_title(title)
         ax1.set_xticks(n_qubits_list)
-        ax1.grid(True, which="both", linestyle="--", alpha=0.4)
+        ax1.grid(visible=True, which="both", linestyle="--", alpha=0.4)
 
         h1, l1 = ax1.get_legend_handles_labels()
         h2, l2 = ax2.get_legend_handles_labels()
@@ -825,7 +837,7 @@ def plot_two_axis_no_errorbars(
 
         ax1.set_title(title)
         ax1.set_xticks(n_qubits_list)
-        ax1.grid(True, which="both", linestyle="--", alpha=0.4)
+        ax1.grid(visible=True, which="both", linestyle="--", alpha=0.4)
 
         h1, l1 = ax1.get_legend_handles_labels()
         h2, l2 = ax2.get_legend_handles_labels()

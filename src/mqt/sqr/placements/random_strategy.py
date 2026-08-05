@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import random
 
+from typing_extensions import override
+
 from mqt.sqr.placements.placement_strategy import PlacementStrategy
 
 
 class RandomPlacementStrategy(PlacementStrategy):
+    @override
     def place_qubits(
         self,
         sn_nodes: list[tuple[int, int]],
