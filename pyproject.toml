@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "mqt-sqr"
 version = "0.1.0"
-description = "MQT SQR"
+description = "MQT SQR - An MQT tool for spin qubit routing"
 readme = "README.md"
 authors = [
     { name = "Julian Shen", email = "julian.shen@tum.de" },
