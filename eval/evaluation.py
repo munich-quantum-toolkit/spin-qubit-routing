@@ -78,8 +78,16 @@ def evaluate_strategy(
 
     strategy_dead = False
 
-    for n_qubits in n_qubits_list:
+    logger.info("\n=== Starting evaluation for %s ===", routing_strategy.__class__.__name__)
+
+    for idx_q, n_qubits in enumerate(n_qubits_list, start=1):
         if strategy_dead:
+            logger.info(
+                "\nQubits: %d (%d/%d) -> skipped (already dead), setting NaN.",
+                n_qubits,
+                idx_q,
+                len(n_qubits_list),
+            )
             avg_timesteps.append(float("nan"))
             avg_movements.append(float("nan"))
             continue
@@ -87,7 +95,11 @@ def evaluate_strategy(
         timesteps_samples: list[int] = []
         movements_samples: list[int] = []
 
+        logger.info("\nQubits: %d (%d/%d)", n_qubits, idx_q, len(n_qubits_list))
+
         for sample_idx in range(n_samples):
+            logger.info("  Sample %d/%d ...", sample_idx + 1, n_samples)
+
             base_seed = 1000 * n_qubits + sample_idx
             random.seed(base_seed)
 
@@ -116,10 +128,16 @@ def evaluate_strategy(
             timesteps_samples.append(total_timesteps(timelines))
             movements_samples.append(count_movements(timelines))
 
+            logger.info("  done")
+
         if timesteps_samples:
             avg_timesteps.append(mean(timesteps_samples))
             avg_movements.append(mean(movements_samples))
         else:
+            logger.warning(
+                "  No successful samples for n_qubits=%d, setting value to NaN and marking strategy as DEAD.",
+                n_qubits,
+            )
             avg_timesteps.append(float("nan"))
             avg_movements.append(float("nan"))
             strategy_dead = True
@@ -143,8 +161,15 @@ def evaluate_strategy_vs_edge_expectation(
     avg_timesteps: list[float] = []
     avg_movements: list[float] = []
 
+    logger.info(
+        "\n=== Starting evaluation for %s over expectation value of working edges ===",
+        routing_strategy.__class__.__name__,
+    )
+
     for idx_e, expectation in enumerate(expectation_values, start=1):
         if expectation < min_expectation:
+            logger.info("\nE=%.2f < %s -> skip -> NaN", expectation, min_expectation)
+
             avg_timesteps.append(float("nan"))
             avg_movements.append(float("nan"))
             continue
@@ -155,7 +180,11 @@ def evaluate_strategy_vs_edge_expectation(
         p_success = expectation
         p_repair = expectation
 
+        logger.info("\nE=%.2f -> p_success=p_repair=%.2f", expectation, expectation)
+
         for sample_idx in range(n_samples):
+            logger.info("  Sample %d/%d ...", sample_idx + 1, n_samples)
+
             base_seed = 10_000 * idx_e + sample_idx
             random.seed(base_seed)
 
@@ -183,6 +212,8 @@ def evaluate_strategy_vs_edge_expectation(
 
             timesteps_samples.append(total_timesteps(timelines))
             movements_samples.append(count_movements(timelines))
+
+            logger.info("  done")
 
         if timesteps_samples:
             avg_timesteps.append(mean(timesteps_samples))
@@ -214,11 +245,17 @@ def evaluate_strategies_over_grids(
         n_qubits = 12 if (width, height) == (5, 5) else max(2, int(0.25 * n_sn))
         qubits_per_grid.append(n_qubits)
 
+        logger.info("\n=== Grid %dx%d, SN=%d, Qubits=%d ===", width, height, n_sn, n_qubits)
+
         for strat_name, routing_strategy in routing_strategies.items():
+            logger.info("\n--- Strategy: %s ---", strat_name)
+
             timesteps_samples: list[int] = []
             movements_samples: list[int] = []
 
             for sample_idx in range(n_samples):
+                logger.info("  Sample %d/%d ...", sample_idx + 1, n_samples)
+
                 base_seed = 100_000 * (width * 10 + height) + sample_idx
                 random.seed(base_seed)
 
@@ -247,6 +284,8 @@ def evaluate_strategies_over_grids(
                 timesteps_samples.append(total_timesteps(timelines))
                 movements_samples.append(count_movements(timelines))
 
+                logger.info("  done")
+
             if timesteps_samples:
                 avg_timesteps[strat_name].append(mean(timesteps_samples))
                 avg_movements[strat_name].append(mean(movements_samples))
@@ -269,16 +308,24 @@ def evaluate_placements_for_routing(
     n_qubits: int = 8,
 ) -> tuple[dict[str, float], dict[str, float], int]:
 
-    get_max_sn_nodes(width, height)
+    n_sn = get_max_sn_nodes(width, height)
+
+    logger.info("\n=== Router: %s ===", routing_strategy.__class__.__name__)
+    logger.info("Grid: %dx%d, SN=%d, Qubits=%d", width, height, n_sn, n_qubits)
+    logger.info("Samples=%d, rounds=%d, p_success=%s, p_repair=%s", n_samples, rounds, p_success, p_repair)
 
     avg_timesteps: dict[str, float] = {}
     avg_movements: dict[str, float] = {}
 
     for pname, placement in placement_strategies.items():
+        logger.info("\n--- Placement strategy: %s ---", pname)
+
         timesteps_samples: list[int] = []
         movements_samples: list[int] = []
 
         for sample_idx in range(n_samples):
+            logger.info("  Sample %d/%d ...", sample_idx + 1, n_samples)
+
             base_seed = 1_000_000 * hash(pname) % (2**31 - 1) + sample_idx
             random.seed(base_seed)
 
@@ -306,6 +353,8 @@ def evaluate_placements_for_routing(
 
             timesteps_samples.append(total_timesteps(timelines))
             movements_samples.append(count_movements(timelines))
+
+            logger.info("  done")
 
         if timesteps_samples:
             avg_timesteps[pname] = mean(timesteps_samples)
@@ -341,15 +390,32 @@ def evaluate_exception_rates_for_strategies_3x3(
 
     strategy_dead: dict[str, bool] = dict.fromkeys(routing_strategies, False)
 
+    logger.info("\n=== Exception Rate Evaluation (3x3 Grid, RandomPlacement) ===")
+    logger.info(
+        "Qubits %d..%d, Samples=%d, p_success=%s, p_repair=%s",
+        n_qubits_min,
+        n_qubits_max,
+        n_samples,
+        p_success,
+        p_repair,
+    )
+
     for n_qubits in n_qubits_list:
+        logger.info("\n--- n_qubits = %d ---", n_qubits)
+
         for strat_name, routing_strategy in routing_strategies.items():
             if strategy_dead[strat_name]:
                 exception_rates[strat_name].append(1.0)
+                logger.info("  Strategy: %s -> skipped (already dead), rate=1", strat_name)
                 continue
+
+            logger.info("  Strategy: %s", strat_name)
 
             fail_count = 0
 
             for sample_idx in range(n_samples):
+                logger.info("    Sample %d/%d ...", sample_idx + 1, n_samples)
+
                 base_seed = (hash(strat_name) & 0x7FFFFFFF) * 10_000 + n_qubits * 100 + sample_idx
                 random.seed(base_seed)
 
@@ -371,15 +437,18 @@ def evaluate_exception_rates_for_strategies_3x3(
 
                 try:
                     simulator.run()
+                    logger.info("    ok")
                 except Exception:
-                    logger.exception("Simulation failed")
                     fail_count += 1
+                    logger.exception("Simulation failed")
 
             rate = fail_count / n_samples
             exception_rates[strat_name].append(rate)
+            logger.info("  -> Exception rate %s @ n_qubits=%d: %.3f", strat_name, n_qubits, rate)
 
             if rate >= 1.0:
                 strategy_dead[strat_name] = True
+                logger.info("  -> %s marked as DEAD (will skip future runs)", strat_name)
 
     plt.figure(figsize=(10, 6))
     for strat_name, rates in exception_rates.items():
@@ -425,18 +494,29 @@ def evaluate_exception_rates_vs_edge_expectation_3x3(
 
     strategy_dead: dict[str, bool] = dict.fromkeys(routing_strategies, False)
 
+    logger.info("\n=== Exception Rate vs. Expectation Value E (3x3 Grid, RandomPlacement) ===")
+    logger.info("Grid: %dx%d, n_qubits=%d, Samples=%d, rounds=%d", width, height, n_qubits, n_samples, rounds)
+    logger.info("E values (evaluated in descending order): %s", expectation_values)
+
     for e in expectation_values:
+        logger.info("\n--- Expectation value E = %.2f ---", e)
+
         p_success = e
         p_repair = e
 
         for strat_name, routing_strategy in routing_strategies.items():
             if strategy_dead[strat_name]:
                 exception_rates[strat_name].append(1.0)
+                logger.info("  Strategy: %s -> skipped (already dead), rate=0", strat_name)
                 continue
+
+            logger.info("  Strategy: %s", strat_name)
 
             fail_count = 0
 
-            for _sample_idx in range(n_samples):
+            for sample_idx in range(n_samples):
+                logger.info("    Sample %d/%d ...", sample_idx + 1, n_samples)
+
                 base_seed = 42
                 random.seed(base_seed)
 
@@ -458,15 +538,18 @@ def evaluate_exception_rates_vs_edge_expectation_3x3(
 
                 try:
                     simulator.run()
+                    logger.info("    ok")
                 except Exception:
-                    logger.exception("Simulation failed")
                     fail_count += 1
+                    logger.exception("Simulation failed")
 
             rate = fail_count / n_samples
             exception_rates[strat_name].append(rate)
+            logger.info("  -> Exception rate %s @ E=%.2f: %.3f", strat_name, e, rate)
 
             if rate >= 1.0:
                 strategy_dead[strat_name] = True
+                logger.info("  -> %s marked as DEAD (will skip future E with rate=0)", strat_name)
 
     e_sorted = sorted(expectation_values)
 
@@ -516,16 +599,33 @@ def evaluate_runtimes_for_strategies_3x3(
 
     strategy_dead: dict[str, bool] = dict.fromkeys(routing_strategies, False)
 
+    logger.info("\n=== Runtime Evaluation (3x3 Grid, RandomPlacement) ===")
+    logger.info(
+        "Qubits %d..%d, Samples=%d, p_success=%s, p_repair=%s",
+        n_qubits_min,
+        n_qubits_max,
+        n_samples,
+        p_success,
+        p_repair,
+    )
+
     for n_qubits in n_qubits_list:
+        logger.info("\n--- n_qubits = %d ---", n_qubits)
+
         for strat_name, routing_strategy in routing_strategies.items():
             if strategy_dead[strat_name]:
                 runtimes[strat_name].append(float("nan"))
+                logger.info("  Strategy: %s -> skipped (already dead), runtime=NaN", strat_name)
                 continue
+
+            logger.info("  Strategy: %s", strat_name)
 
             sample_runtimes: list[float] = []
             fail_count = 0
 
             for sample_idx in range(n_samples):
+                logger.info("    Sample %d/%d ...", sample_idx + 1, n_samples)
+
                 base_seed = (hash(strat_name) & 0x7FFFFFFF) * 10_000 + n_qubits * 100 + sample_idx
                 random.seed(base_seed)
 
@@ -548,17 +648,24 @@ def evaluate_runtimes_for_strategies_3x3(
                 start_t = time.perf_counter()
                 try:
                     simulator.run()
+                    logger.info("    ok")
                 except Exception:
-                    logger.exception("Simulation failed")
                     fail_count += 1
+                    logger.exception("Simulation failed")
                 finally:
                     duration = time.perf_counter() - start_t
                     sample_runtimes.append(duration)
 
             avg_runtime = mean(sample_runtimes)
             runtimes[strat_name].append(avg_runtime)
+            logger.info("  -> Avg runtime %s @ n_qubits=%d: %.6f s", strat_name, n_qubits, avg_runtime)
 
             if fail_count == n_samples:
+                logger.warning(
+                    "  No successful runs for %s @ n_qubits=%d, marking strategy as DEAD.",
+                    strat_name,
+                    n_qubits,
+                )
                 strategy_dead[strat_name] = True
 
     plt.figure(figsize=(10, 6))
@@ -602,8 +709,16 @@ def evaluate_strategy_with_errorbars(
 
     strategy_dead = False
 
-    for n_qubits in n_qubits_list:
+    logger.info("\n=== Starting evaluation for %s ===", routing_strategy.__class__.__name__)
+
+    for idx_q, n_qubits in enumerate(n_qubits_list, start=1):
         if strategy_dead:
+            logger.info(
+                "\nQubits: %d (%d/%d) -> skipped (already dead), setting NaN.",
+                n_qubits,
+                idx_q,
+                len(n_qubits_list),
+            )
             t_mean.append(float("nan"))
             t_std.append(float("nan"))
             m_mean.append(float("nan"))
@@ -614,7 +729,11 @@ def evaluate_strategy_with_errorbars(
         timesteps_samples: list[int] = []
         movements_samples: list[int] = []
 
+        logger.info("\nQubits: %d (%d/%d)", n_qubits, idx_q, len(n_qubits_list))
+
         for sample_idx in range(n_samples):
+            logger.info("  Sample %d/%d ...", sample_idx + 1, n_samples)
+
             base_seed = 1000 * n_qubits + sample_idx
             random.seed(base_seed)
 
@@ -642,6 +761,7 @@ def evaluate_strategy_with_errorbars(
 
             timesteps_samples.append(total_timesteps(timelines))
             movements_samples.append(count_movements(timelines))
+            logger.info("  done")
 
         n_success.append(len(timesteps_samples))
 
@@ -652,6 +772,10 @@ def evaluate_strategy_with_errorbars(
             t_std.append(stdev(timesteps_samples) if len(timesteps_samples) > 1 else 0.0)
             m_std.append(stdev(movements_samples) if len(movements_samples) > 1 else 0.0)
         else:
+            logger.warning(
+                "  No successful samples for n_qubits=%d, setting value to NaN and marking strategy as DEAD.",
+                n_qubits,
+            )
             t_mean.append(float("nan"))
             t_std.append(float("nan"))
             m_mean.append(float("nan"))
@@ -924,6 +1048,10 @@ def main() -> None:
         title="",
     )
 
+    logger.info("\nCSV saved to: %s", pathlib.Path(csv_path).resolve())
+    logger.info("Plot saved to: %s", pathlib.Path(plot_path).resolve())
+
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     main()
