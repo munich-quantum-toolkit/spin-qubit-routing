@@ -148,6 +148,7 @@ default.extend-ignore-re = [
 
 [tool.typos.default.extend-words]
 wille = "wille"
+strat = "strat"
 
 
 [tool.repo-review.ignore]

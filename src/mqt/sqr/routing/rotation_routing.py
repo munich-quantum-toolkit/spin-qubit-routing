@@ -629,7 +629,7 @@ class RouteRuntime:
         self.edge_timebands.append((self.t - 1, self.t, set(self.defective_edges)))
 
         if self.wait_streak >= MAX_WAIT_TIME:
-            msg = f"Routing stuck: {self.wait_streak} aufeinanderfolgende Timesteps ohne Bewegung (t={self.t})."
+            msg = f"Routing stuck: {self.wait_streak} consecutive timesteps without movement (t={self.t})."
             raise RuntimeError(msg)
 
         return moved

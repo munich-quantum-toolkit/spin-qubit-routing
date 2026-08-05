@@ -385,9 +385,11 @@ def evaluate_exception_rates_for_strategies_3x3(
     for strat_name, rates in exception_rates.items():
         plt.plot(n_qubits_list, rates, marker="o", label=strat_name)
 
-    plt.xlabel("Anzahl Qubits")
-    plt.ylabel("Exception-Rate")
-    plt.title("Exception-Rate vs. Qubit-Anzahl\n3x3-Grid, RandomPlacement, p_success=0.998, p_repair=0.25, 100 Samples")
+    plt.xlabel("Number of Qubits")
+    plt.ylabel("Exception Rate")
+    plt.title(
+        "Exception Rate vs. Number of Qubits\n3x3 Grid, RandomPlacement, p_success=0.998, p_repair=0.25, 100 Samples"
+    )
     plt.xticks(n_qubits_list, rotation=45)
     plt.ylim(-0.05, 1.05)
     plt.grid(visible=True, which="both", linestyle="--", alpha=0.5)
@@ -475,9 +477,11 @@ def evaluate_exception_rates_vs_edge_expectation_3x3(
 
         plt.plot(e_sorted, rates_sorted, marker="o", label=strat_name)
 
-    plt.xlabel("Erwartungswert E funktionierender Kanten")
-    plt.ylabel("Exception-Rate")
-    plt.title(f"Exception-Rate vs. Erwartungswert E\n3x3-Grid, n_qubits={n_qubits}, RandomPlacement, 100 Samples pro E")
+    plt.xlabel("Expectation Value E of Working Edges")
+    plt.ylabel("Exception Rate")
+    plt.title(
+        f"Exception Rate vs. Expectation Value E\n3x3 Grid, n_qubits={n_qubits}, RandomPlacement, 100 Samples per E"
+    )
     plt.xticks(e_sorted, rotation=45)
     plt.ylim(-0.05, 1.05)
     plt.grid(visible=True, which="both", linestyle="--", alpha=0.5)
@@ -561,11 +565,11 @@ def evaluate_runtimes_for_strategies_3x3(
     for strat_name, rt in runtimes.items():
         plt.plot(n_qubits_list, rt, marker="o", label=strat_name)
 
-    plt.xlabel("Anzahl Qubits")
-    plt.ylabel("Durchschnittliche Laufzeit pro Run [s]")
+    plt.xlabel("Number of Qubits")
+    plt.ylabel("Average Runtime per Run [s]")
     plt.title(
-        "Laufzeit vs. Qubit-Anzahl\n"
-        "3x3-Grid, RandomPlacement, "
+        "Runtime vs. Number of Qubits\n"
+        "3x3 Grid, RandomPlacement, "
         f"p_success={p_success}, p_repair={p_repair}, {n_samples} Samples"
     )
     plt.xticks(n_qubits_list, rotation=45)

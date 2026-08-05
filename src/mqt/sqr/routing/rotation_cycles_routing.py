@@ -149,10 +149,7 @@ class _RoutingContext:
         self.edge_timebands.append((self.t - 1, self.t, set(self.defective_edges)))
 
         if self.wait_streak is not None and self.max_wait_time is not None and self.wait_streak >= self.max_wait_time:
-            msg = (
-                f"{self.stuck_error_prefix}: {self.wait_streak} aufeinanderfolgende "
-                f"Timesteps ohne Bewegung (t={self.t})."
-            )
+            msg = f"{self.stuck_error_prefix}: {self.wait_streak} consecutive timesteps without movement (t={self.t})."
             raise RuntimeError(msg)
 
         return moved
@@ -171,7 +168,7 @@ class _LoopHelpers:
             return +1
         if loop[(i - 1) % n] == v:
             return -1
-        msg = f"{u}->{v} ist keine Nachbarschaft im Loop"
+        msg = f"{u}->{v} is not an adjacency in the loop"
         raise ValueError(msg)
 
     @staticmethod

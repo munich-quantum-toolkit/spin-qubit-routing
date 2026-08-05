@@ -50,8 +50,8 @@ class DefaultRoutingPlanner(RoutingStrategy):
             global_iter += 1
             if global_iter > MAX_GLOBAL_ITERS:
                 msg = (
-                    f"Abbruch (Safeguard): mehr also {MAX_GLOBAL_ITERS} Iterationen "
-                    f"im Routing-Hauptloop (mögliche Dauerschleife, aktueller Layer = {idx})."
+                    f"Aborted (safeguard): more than {MAX_GLOBAL_ITERS} iterations "
+                    f"in the main routing loop (possible infinite loop, current layer = {idx})."
                 )
                 raise RuntimeError(msg)
 
@@ -94,9 +94,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
                     continue
 
             if not fixed_meetings and not unplaceable_pairs_step1 and not exhausted_pairs_step1:
-                msg = (
-                    f"Layer {idx} unlösbar: keine Meeting-INs fixiert und kein Spillover möglich. Paare: {layer_pairs}"
-                )
+                msg = f"Layer {idx} unsolvable: no meeting-INs fixed and no spillover possible. Pairs: {layer_pairs}"
                 raise RuntimeError(msg)
 
             if not fixed_meetings:
@@ -208,7 +206,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
             if replan_current_layer:
                 replan_counts[idx] = replan_counts.get(idx, 0) + 1
                 if replan_counts[idx] > MAX_REPLANS:
-                    msg = f"Kein gültiges Routing für Layer {idx} nach {replan_counts[idx]} Neuplanungen."
+                    msg = f"No valid routing for layer {idx} after {replan_counts[idx]} replans."
                     raise RuntimeError(msg)
                 continue
 
