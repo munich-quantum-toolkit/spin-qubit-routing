@@ -4,9 +4,9 @@ from copy import deepcopy
 
 import networkx as nx
 
-from routing.common import Coord, MAX_TIME, Qubit, Reservations, TimedNode
-from routing.default_routing import DefaultRoutingPlanner
-from routing.routing_strategy import RoutingResult, RoutingStrategy
+from mqt.sqr.routing.common import Coord, MAX_TIME, Qubit, Reservations, TimedNode
+from mqt.sqr.routing.default_routing import DefaultRoutingPlanner
+from mqt.sqr.routing.routing_strategy import RoutingResult, RoutingStrategy
 
 MAX_REPLANS = 50
 MAX_GLOBAL_ITERS = 50

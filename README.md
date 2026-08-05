@@ -5,18 +5,16 @@ This repository contains the implementation of the routing algorithms and inital
 ## Usage
 
 Follow these steps to execute the framework:
+
 1. Clone this repository using
    
    ```
    git clone https://github.com/munich-quantum-toolkit/spin-qubit-routing.git
    ```
-2. Install all required packages listed in the [requirements](requirements.txt) by running:
-   
-   ```
-   pip install -r requirements.txt
-   ```
-3. In `main.py`, select the desired initial-mapping and routing strategy, and adjust the `SimulationConfig` if needed.
-4. Run the program by executing `main.py`.
+
+2. In [`examples/main.py`](./examples/main.py), select the desired initial-mapping and routing strategy, and adjust the `SimulationConfig` if needed.
+
+3. Run the program by executing `uv run python examples/main.py`.
 
 After that, a GUI should appear that visualizes the routing simulation:
 

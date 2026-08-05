@@ -5,7 +5,7 @@ from typing import TypeAlias
 
 import networkx as nx
 
-from routing.common import Coord, Qubit, TimedNode
+from mqt.sqr.routing.common import Coord, Qubit, TimedNode
 
 
 QubitPair: TypeAlias = tuple[Qubit, Qubit]
