@@ -1,14 +1,24 @@
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
 from __future__ import annotations
 
 import random
 from collections import deque
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import networkx as nx
 
-from mqt.sqr.routing.common import Coord, Qubit, TimedNode
 from mqt.sqr.routing.default_routing import DefaultRoutingPlanner
 from mqt.sqr.routing.routing_strategy import RoutingResult, RoutingStrategy
+
+if TYPE_CHECKING:
+    from mqt.sqr.routing.common import Coord, Qubit, TimedNode
 
 MAX_WAIT_TIME = 100
 
@@ -65,9 +75,7 @@ class _RoutingContext:
         self.current_pos: dict[int, Coord] = {q.id: q.pos for q in qubits}
         self.all_qids: set[int] = {q.id for q in qubits}
 
-        self.timelines: dict[int, list[TimedNode]] = {
-            q.id: [(self.current_pos[q.id], 0)] for q in qubits
-        }
+        self.timelines: dict[int, list[TimedNode]] = {q.id: [(self.current_pos[q.id], 0)] for q in qubits}
         self.t = 0
 
         self.defective_edges: set[frozenset] = set()
@@ -101,9 +109,8 @@ class _RoutingContext:
             if e in self.defective_edges:
                 if random.random() < self.p_repair:
                     self.defective_edges.discard(e)
-            else:
-                if random.random() < (1.0 - self.p_success):
-                    self.defective_edges.add(e)
+            elif random.random() < (1.0 - self.p_success):
+                self.defective_edges.add(e)
 
     def would_use_defect(self, pending: dict[int, Coord]) -> bool:
         for qid, newp in pending.items():
@@ -140,10 +147,11 @@ class _RoutingContext:
 
         if self.wait_streak is not None and self.max_wait_time is not None:
             if self.wait_streak >= self.max_wait_time:
-                raise RuntimeError(
+                msg = (
                     f"{self.stuck_error_prefix}: {self.wait_streak} aufeinanderfolgende "
                     f"Timesteps ohne Bewegung (t={self.t})."
                 )
+                raise RuntimeError(msg)
 
         return moved
 
@@ -161,7 +169,8 @@ class _LoopHelpers:
             return +1
         if loop[(i - 1) % n] == v:
             return -1
-        raise ValueError(f"{u}->{v} ist keine Nachbarschaft im Loop")
+        msg = f"{u}->{v} ist keine Nachbarschaft im Loop"
+        raise ValueError(msg)
 
     @staticmethod
     def compute_pair_rotation_updates_for_loop(
@@ -295,7 +304,7 @@ class _PlannerCommon:
                 return trace[i]
             return trace[-1]
 
-        for i in range(0, L + 1):
+        for i in range(L + 1):
             p_a1 = pos(p1, a1, i)
             p_b1 = pos(p1, b1, i)
             p_a2 = pos(p2, a2, i)
@@ -309,15 +318,9 @@ class _PlannerCommon:
     def plans_compatible_loops(self, p1: _Plan, p2: _Plan) -> bool:
         L = max(p1.length, p2.length)
         for i in range(L):
-            if i < p1.length:
-                d1 = {_LoopHelpers.canonical_loop_tuple(D) for (D, _dir) in p1.ticks[i].loops}
-            else:
-                d1 = set()
+            d1 = {_LoopHelpers.canonical_loop_tuple(D) for D, _dir in p1.ticks[i].loops} if i < p1.length else set()
 
-            if i < p2.length:
-                d2 = {_LoopHelpers.canonical_loop_tuple(D) for (D, _dir) in p2.ticks[i].loops}
-            else:
-                d2 = set()
+            d2 = {_LoopHelpers.canonical_loop_tuple(D) for D, _dir in p2.ticks[i].loops} if i < p2.length else set()
 
             if not d1.isdisjoint(d2):
                 return False
@@ -351,7 +354,7 @@ class _PlannerCommon:
     def build_pair_order(self, pairs: list[tuple[Qubit, Qubit]]) -> dict[tuple[int, int], int]:
         pair_order: dict[tuple[int, int], int] = {}
         for idx, (qa, qb) in enumerate(pairs):
-            pair_order[(qa.id, qb.id)] = idx
+            pair_order[qa.id, qb.id] = idx
         return pair_order
 
     def is_ready_pair(
@@ -368,7 +371,7 @@ class _PlannerCommon:
             j = pair_order[other]
             if j < idx:
                 x, y = other
-                if x == a or x == b or y == a or y == b:
+                if y in {a, b} or x in {a, b}:
                     return False
         return True
 
@@ -464,16 +467,16 @@ class _CirclePlannerEngine(_PlannerCommon):
                     if w == u:
                         if _edgeset(node, u) in self.ctx.defective_edges:
                             continue
-                        full_path = path + [u]
+                        full_path = [*path, u]
                         if len(full_path) == max_nodes:
-                            return [u] + path
+                            return [u, *path]
                         continue
 
                     if w in path:
                         continue
 
                     if len(path) + 1 <= max_nodes:
-                        queue.append((w, path + [w]))
+                        queue.append((w, [*path, w]))
 
         return None
 
@@ -507,9 +510,7 @@ class _CirclePlannerEngine(_PlannerCommon):
                     loopA = self.circle_for_edge(uA, vA)
                     if loopA:
                         dirA = _LoopHelpers.rot_dir_loop(loopA, uA, vA)
-                        updA = _LoopHelpers.compute_pair_rotation_updates_for_loop(
-                            loopA, dirA, a_id, b_id, la, lb
-                        )
+                        updA = _LoopHelpers.compute_pair_rotation_updates_for_loop(loopA, dirA, a_id, b_id, la, lb)
                         updA[a_id] = vA
                         updates.update(updA)
                         loops_for_step.append((loopA, dirA))
@@ -525,20 +526,16 @@ class _CirclePlannerEngine(_PlannerCommon):
                     loopB = self.circle_for_edge(uB, vB)
                     if loopB:
                         dirB = _LoopHelpers.rot_dir_loop(loopB, uB, vB)
-                        updB = _LoopHelpers.compute_pair_rotation_updates_for_loop(
-                            loopB, dirB, a_id, b_id, la, lb
-                        )
+                        updB = _LoopHelpers.compute_pair_rotation_updates_for_loop(loopB, dirB, a_id, b_id, la, lb)
                         updB[b_id] = vB
                         if not (loops_for_step and set(loops_for_step[0][0]).intersection(loopB)):
                             updates.update(updB)
                             loops_for_step.append((loopB, dirB))
                             used_loops.add(_LoopHelpers.canonical_loop_tuple(loopB))
-                    else:
-                        if b_id not in updates:
-                            updates[b_id] = vB
-                else:
-                    if b_id not in updates:
+                    elif b_id not in updates:
                         updates[b_id] = vB
+                elif b_id not in updates:
+                    updates[b_id] = vB
 
             if not updates:
                 return None
@@ -580,11 +577,7 @@ class _CirclePlannerEngine(_PlannerCommon):
         remaining: set[tuple[int, int]] = {(qa.id, qb.id) for qa, qb in pairs}
 
         while remaining:
-            ready_pids = [
-                pid
-                for pid in remaining
-                if self.is_ready_pair(pid, remaining, pair_order)
-            ]
+            ready_pids = [pid for pid in remaining if self.is_ready_pair(pid, remaining, pair_order)]
             if not ready_pids:
                 ready_pids = list(remaining)
 
@@ -666,8 +659,7 @@ class _CirclePlannerEngine(_PlannerCommon):
                     for pid in grp:
                         self.commit_plan_sequential_with_retry(pid, plans[pid])
 
-                for pid in grp:
-                    remaining.discard(pid)
+                remaining.difference_update(grp)
 
                 something_finished = True
                 break
@@ -721,16 +713,16 @@ class _HybridPlannerEngine(_PlannerCommon):
                     if w == u:
                         if _edgeset(node, u) in self.ctx.defective_edges:
                             continue
-                        full_path = path + [u]
+                        full_path = [*path, u]
                         if len(full_path) == max_nodes:
-                            return [u] + path
+                            return [u, *path]
                         continue
 
                     if w in path:
                         continue
 
                     if len(path) + 1 <= max_nodes:
-                        queue.append((w, path + [w]))
+                        queue.append((w, [*path, w]))
 
         return None
 
@@ -764,9 +756,7 @@ class _HybridPlannerEngine(_PlannerCommon):
                     dA = self.diamond_for_edge(uA, vA)
                     if dA:
                         dirA = _DiamondHelpers.rot_dir_diamond(dA, uA, vA)
-                        updA = _DiamondHelpers.compute_pair_rotation_updates_for_diamond(
-                            dA, dirA, a_id, b_id, la, lb
-                        )
+                        updA = _DiamondHelpers.compute_pair_rotation_updates_for_diamond(dA, dirA, a_id, b_id, la, lb)
                         updA[a_id] = vA
                         updates.update(updA)
                         loops_for_step.append((dA, dirA))
@@ -782,20 +772,16 @@ class _HybridPlannerEngine(_PlannerCommon):
                     dB = self.diamond_for_edge(uB, vB)
                     if dB:
                         dirB = _DiamondHelpers.rot_dir_diamond(dB, uB, vB)
-                        updB = _DiamondHelpers.compute_pair_rotation_updates_for_diamond(
-                            dB, dirB, a_id, b_id, la, lb
-                        )
+                        updB = _DiamondHelpers.compute_pair_rotation_updates_for_diamond(dB, dirB, a_id, b_id, la, lb)
                         updB[b_id] = vB
                         if not (loops_for_step and set(loops_for_step[0][0]).intersection(dB)):
                             updates.update(updB)
                             loops_for_step.append((dB, dirB))
                             used.add(_LoopHelpers.canonical_loop_tuple(dB))
-                    else:
-                        if b_id not in updates:
-                            updates[b_id] = vB
-                else:
-                    if b_id not in updates:
+                    elif b_id not in updates:
                         updates[b_id] = vB
+                elif b_id not in updates:
+                    updates[b_id] = vB
 
             if not updates:
                 return None
@@ -862,9 +848,7 @@ class _HybridPlannerEngine(_PlannerCommon):
                     loopA = self.circle_for_edge(uA, vA)
                     if loopA:
                         dirA = _LoopHelpers.rot_dir_loop(loopA, uA, vA)
-                        updA = _LoopHelpers.compute_pair_rotation_updates_for_loop(
-                            loopA, dirA, a_id, b_id, la, lb
-                        )
+                        updA = _LoopHelpers.compute_pair_rotation_updates_for_loop(loopA, dirA, a_id, b_id, la, lb)
                         updA[a_id] = vA
                         updates.update(updA)
                         loops_for_step.append((loopA, dirA))
@@ -880,20 +864,16 @@ class _HybridPlannerEngine(_PlannerCommon):
                     loopB = self.circle_for_edge(uB, vB)
                     if loopB:
                         dirB = _LoopHelpers.rot_dir_loop(loopB, uB, vB)
-                        updB = _LoopHelpers.compute_pair_rotation_updates_for_loop(
-                            loopB, dirB, a_id, b_id, la, lb
-                        )
+                        updB = _LoopHelpers.compute_pair_rotation_updates_for_loop(loopB, dirB, a_id, b_id, la, lb)
                         updB[b_id] = vB
                         if not (loops_for_step and set(loops_for_step[0][0]).intersection(loopB)):
                             updates.update(updB)
                             loops_for_step.append((loopB, dirB))
                             used.add(_LoopHelpers.canonical_loop_tuple(loopB))
-                    else:
-                        if b_id not in updates:
-                            updates[b_id] = vB
-                else:
-                    if b_id not in updates:
+                    elif b_id not in updates:
                         updates[b_id] = vB
+                elif b_id not in updates:
+                    updates[b_id] = vB
 
             if not updates:
                 return None
@@ -935,11 +915,7 @@ class _HybridPlannerEngine(_PlannerCommon):
         remaining: set[tuple[int, int]] = {(qa.id, qb.id) for qa, qb in pairs}
 
         while remaining:
-            ready_pids = [
-                pid
-                for pid in remaining
-                if self.is_ready_pair(pid, remaining, pair_order)
-            ]
+            ready_pids = [pid for pid in remaining if self.is_ready_pair(pid, remaining, pair_order)]
             if not ready_pids:
                 ready_pids = list(remaining)
 
@@ -1039,9 +1015,9 @@ class _HybridPlannerEngine(_PlannerCommon):
                                 pre_map = self.live_pre_by_pair.get(
                                     pid,
                                     {
-                                    a_id: self.ctx.current_pos[a_id],
-                                    b_id: self.ctx.current_pos[b_id],
-                                },
+                                        a_id: self.ctx.current_pos[a_id],
+                                        b_id: self.ctx.current_pos[b_id],
+                                    },
                                 )
                                 s = _Step({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
 
@@ -1062,8 +1038,7 @@ class _HybridPlannerEngine(_PlannerCommon):
                                     plan = circle_plan
                                     step_seq = 0
 
-                for pid in grp:
-                    remaining.discard(pid)
+                remaining.difference_update(grp)
 
                 something_finished = True
                 break

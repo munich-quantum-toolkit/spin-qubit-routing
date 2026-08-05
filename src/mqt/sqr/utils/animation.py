@@ -1,15 +1,22 @@
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
 from __future__ import annotations
 
 import math
+from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Hashable, Mapping, Sequence, TypeAlias
+from typing import TypeAlias
 
 import matplotlib.pyplot as plt
 import networkx as nx
 from matplotlib.animation import FuncAnimation
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
-
 
 Coord: TypeAlias = tuple[int, int]
 Position: TypeAlias = tuple[float, float]
@@ -57,10 +64,7 @@ def _build_time_indexed_positions(
     path_index = 0
 
     for time in range(start_time, end_time + 1):
-        while (
-            path_index + 1 < len(path)
-            and path[path_index + 1][1] <= time
-        ):
+        while path_index + 1 < len(path) and path[path_index + 1][1] <= time:
             path_index += 1
 
         positions_by_time[time] = path[path_index][0]
@@ -86,9 +90,7 @@ def _make_smooth_positions(
     if not path:
         return [], [], -1
 
-    positions_by_time, start_time, end_time = (
-        _build_time_indexed_positions(path)
-    )
+    positions_by_time, start_time, end_time = _build_time_indexed_positions(path)
     positions: list[Position] = []
     frames: list[float] = []
 
@@ -114,9 +116,7 @@ def _make_step_positions(
     if not path:
         return [], [], -1
 
-    positions_by_time, start_time, end_time = (
-        _build_time_indexed_positions(path)
-    )
+    positions_by_time, start_time, end_time = _build_time_indexed_positions(path)
     frames = list(range(start_time, end_time + 1))
     positions = [positions_by_time[time] for time in frames]
 
@@ -141,20 +141,14 @@ def animate_mapf(
     edge_timebands: Sequence[EdgeTimeBand] | None = None,
     failed_edges_timeline: Mapping[int, set[Edge]] | None = None,
 ) -> FuncAnimation:
-    graph_positions = {
-        node: node
-        for node in G
-    }
+    graph_positions = {node: node for node in G}
 
     figure, axis = plt.subplots(
         figsize=(8, 8),
         constrained_layout=True,
     )
 
-    all_segments = [
-        (graph_positions[source], graph_positions[target])
-        for source, target in G.edges
-    ]
+    all_segments = [(graph_positions[source], graph_positions[target]) for source, target in G.edges]
     base_edges = LineCollection(
         all_segments,
         alpha=0.3,
@@ -172,16 +166,8 @@ def animate_mapf(
     )
     axis.add_collection(failed_edges)
 
-    interaction_nodes = [
-        node
-        for node, data in G.nodes(data=True)
-        if data.get("type") == "IN"
-    ]
-    storage_nodes = [
-        node
-        for node, data in G.nodes(data=True)
-        if data.get("type") == "SN"
-    ]
+    interaction_nodes = [node for node, data in G.nodes(data=True) if data.get("type") == "IN"]
+    storage_nodes = [node for node, data in G.nodes(data=True) if data.get("type") == "SN"]
 
     nx.draw_networkx_nodes(
         G,
@@ -224,7 +210,7 @@ def animate_mapf(
             positions=positions,
             frames=frames,
             last_index=last_index,
-            frame_to_position=dict(zip(frames, positions)),
+            frame_to_position=dict(zip(frames, positions, strict=False)),
             first_frame=frames[0] if frames else None,
             last_frame=frames[-1] if frames else None,
         )
@@ -238,13 +224,9 @@ def animate_mapf(
     legend_labels: list[str] = []
 
     for data in agent_data:
-        initial_position = (
-            data.positions[0]
-            if data.positions
-            else (0.0, 0.0)
-        )
+        initial_position = data.positions[0] if data.positions else (0.0, 0.0)
 
-        dot, = axis.plot(
+        (dot,) = axis.plot(
             [initial_position[0]],
             [initial_position[1]],
             marker="o",
@@ -291,29 +273,19 @@ def animate_mapf(
         if exact_position is not None:
             return exact_position
 
-        if (
-            data.first_frame is not None
-            and global_frame < data.first_frame
-        ):
+        if data.first_frame is not None and global_frame < data.first_frame:
             return data.positions[0]
 
-        if (
-            data.last_frame is not None
-            and global_frame > data.last_frame
-        ):
+        if data.last_frame is not None and global_frame > data.last_frame:
             return data.positions[-1]
 
-        previous_frame = max(
-            frame
-            for frame in data.frames
-            if frame <= global_frame
-        )
+        previous_frame = max(frame for frame in data.frames if frame <= global_frame)
         return data.frame_to_position[previous_frame]
 
     def get_failed_segments(
         global_frame: float,
     ) -> list[tuple[Coord, Coord]]:
-        time = int(math.floor(global_frame + 1e-9))
+        time = math.floor(global_frame + 1e-9)
 
         if failed_edges_timeline is not None:
             current_failed_edges = failed_edges_timeline.get(
@@ -333,21 +305,17 @@ def animate_mapf(
 
         for edge in current_failed_edges:
             source, target = tuple(edge)
-            segments.append(
-                (
-                    graph_positions[source],
-                    graph_positions[target],
-                )
-            )
+            segments.append((
+                graph_positions[source],
+                graph_positions[target],
+            ))
 
         return segments
 
     def update(frame_index: int) -> list[Line2D | LineCollection]:
         global_frame = global_frames[frame_index]
 
-        failed_edges.set_segments(
-            get_failed_segments(global_frame)
-        )
+        failed_edges.set_segments(get_failed_segments(global_frame))
 
         artists: list[Line2D | LineCollection] = [failed_edges]
 

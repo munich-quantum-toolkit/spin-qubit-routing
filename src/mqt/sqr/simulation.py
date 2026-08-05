@@ -1,9 +1,20 @@
-from dataclasses import dataclass
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
 
-from mqt.sqr.routing.routing_strategy import RoutingStrategy
-from mqt.sqr.placements.placement_strategy import PlacementStrategy
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from mqt.sqr.utils.animation import animate_mapf
+
+if TYPE_CHECKING:
+    from mqt.sqr.placements.placement_strategy import PlacementStrategy
+    from mqt.sqr.routing.routing_strategy import RoutingStrategy
 
 
 @dataclass
@@ -18,13 +29,12 @@ class SimulationConfig:
 
 
 class RoutingSimulator:
-
     def __init__(
         self,
         placement_strategy: PlacementStrategy,
         routing_strategy: RoutingStrategy,
         config: SimulationConfig,
-    ):
+    ) -> None:
         self.placement_strategy = placement_strategy
         self.routing_strategy = routing_strategy
         self.config = config
@@ -35,7 +45,7 @@ class RoutingSimulator:
             height=self.config.height,
             n_qubits=self.config.n_qubits,
             rounds=self.config.rounds,
-            seed=self.config.seed
+            seed=self.config.seed,
         )
 
         # 2) Routing
@@ -47,7 +57,6 @@ class RoutingSimulator:
             self.config.p_repair,
         )
 
-        
         animate_mapf(G, timelines, edge_timebands=edge_timebands, smooth=True)
 
         return timelines, edge_timebands

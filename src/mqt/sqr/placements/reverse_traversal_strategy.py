@@ -1,13 +1,23 @@
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
 from __future__ import annotations
 
 import random
-
-import networkx as nx
+from itertools import starmap
+from typing import TYPE_CHECKING
 
 from mqt.sqr.placements.placement_strategy import PlacementStrategy
 from mqt.sqr.routing.common import Coord, Qubit
 from mqt.sqr.routing.rotation_routing import RotationRoutingPlanner
 from mqt.sqr.utils.network import NetworkBuilder
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 
 class ReverseTraversalPlacementStrategy(PlacementStrategy):
@@ -36,27 +46,15 @@ class ReverseTraversalPlacementStrategy(PlacementStrategy):
         )
 
         network = NetworkBuilder.build_network(width, height)
-        sn_nodes = [
-            node
-            for node, data in network.nodes(data=True)
-            if data.get("type") == "SN"
-        ]
+        sn_nodes = [node for node, data in network.nodes(data=True) if data.get("type") == "SN"]
 
         if n_qubits > len(sn_nodes):
-            raise ValueError(
-                f"n_qubits={n_qubits} exceeds available SN nodes "
-                f"({len(sn_nodes)})."
-            )
+            msg = f"n_qubits={n_qubits} exceeds available SN nodes ({len(sn_nodes)})."
+            raise ValueError(msg)
 
         initial_coordinates = random.Random(seed).sample(sn_nodes, n_qubits)
-        initial_qubits = [
-            Qubit(qubit_id, coordinate)
-            for qubit_id, coordinate in enumerate(initial_coordinates)
-        ]
-        initial_qubits_by_id = {
-            qubit.id: qubit
-            for qubit in initial_qubits
-        }
+        initial_qubits = list(starmap(Qubit, enumerate(initial_coordinates)))
+        initial_qubits_by_id = {qubit.id: qubit for qubit in initial_qubits}
 
         warmup_pairs = [
             (
@@ -76,18 +74,11 @@ class ReverseTraversalPlacementStrategy(PlacementStrategy):
         )
 
         final_coordinates_by_id: dict[int, Coord] = {
-            qubit_id: timeline[-1][0]
-            for qubit_id, timeline in timelines.items()
+            qubit_id: timeline[-1][0] for qubit_id, timeline in timelines.items()
         }
 
-        final_qubits = [
-            Qubit(qubit_id, final_coordinates_by_id[qubit_id])
-            for qubit_id in range(n_qubits)
-        ]
-        final_qubits_by_id = {
-            qubit.id: qubit
-            for qubit in final_qubits
-        }
+        final_qubits = [Qubit(qubit_id, final_coordinates_by_id[qubit_id]) for qubit_id in range(n_qubits)]
+        final_qubits_by_id = {qubit.id: qubit for qubit in final_qubits}
 
         final_pairs = [
             (

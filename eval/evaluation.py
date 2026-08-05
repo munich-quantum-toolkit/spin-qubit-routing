@@ -1,37 +1,49 @@
-import os
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
+from __future__ import annotations
+
 import csv
+import itertools
+import pathlib
 import random
 import time
 from statistics import mean, stdev
-from typing import Dict, List, Tuple
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-import networkx as nx
 import numpy as np
 
-from mqt.sqr.routing.common import TimedNode  
-from mqt.sqr.routing.routing_strategy import RoutingStrategy
-from mqt.sqr.routing.default_routing import DefaultRoutingPlanner
-from mqt.sqr.routing.routing_with_reroute import RerouteRoutingPlanner
-from mqt.sqr.routing.rotation_routing import RotationRoutingPlanner
-from mqt.sqr.routing.rotation_cycles_routing import HybridRotationRoutingPlanner
-from mqt.sqr.placements.placement_strategy import PlacementStrategy
 from mqt.sqr.placements.random_strategy import RandomPlacementStrategy
-from mqt.sqr.placements.reverse_traversal_strategy import ReverseTraversalPlacementStrategy
-from mqt.sqr.placements.interaction_placement_strategy import InteractionPlacementStrategy
-from mqt.sqr.simulation import SimulationConfig, RoutingSimulator
-from mqt.sqr.utils.network import NetworkBuilder  
+from mqt.sqr.routing.default_routing import DefaultRoutingPlanner
+from mqt.sqr.routing.rotation_cycles_routing import HybridRotationRoutingPlanner
+from mqt.sqr.routing.rotation_routing import RotationRoutingPlanner
+from mqt.sqr.routing.routing_with_reroute import RerouteRoutingPlanner
+from mqt.sqr.simulation import RoutingSimulator, SimulationConfig
+from mqt.sqr.utils.network import NetworkBuilder
 
-def count_movements(timelines: Dict[int, List[TimedNode]]) -> int:
+if TYPE_CHECKING:
+    import networkx as nx
+
+    from mqt.sqr.placements.placement_strategy import PlacementStrategy
+    from mqt.sqr.routing.common import TimedNode
+    from mqt.sqr.routing.routing_strategy import RoutingStrategy
+
+
+def count_movements(timelines: dict[int, list[TimedNode]]) -> int:
     moves = 0
     for path in timelines.values():
-        for (c1, _), (c2, _) in zip(path[:-1], path[1:]):
+        for (c1, _), (c2, _) in itertools.pairwise(path):
             if c1 != c2:
                 moves += 1
     return moves
 
 
-def total_timesteps(timelines: Dict[int, List[TimedNode]]) -> int:
+def total_timesteps(timelines: dict[int, list[TimedNode]]) -> int:
     max_t = 0
     for path in timelines.values():
         if path:
@@ -41,49 +53,37 @@ def total_timesteps(timelines: Dict[int, List[TimedNode]]) -> int:
 
 def get_max_sn_nodes(width: int, height: int) -> int:
     G: nx.Graph = NetworkBuilder.build_network(width, height)
-    n_sn = sum(1 for _, data in G.nodes(data=True) if data.get("type") == "SN")
-    return n_sn
-
+    return sum(1 for _, data in G.nodes(data=True) if data.get("type") == "SN")
 
 
 def evaluate_strategy(
     routing_strategy: RoutingStrategy,
-    n_qubits_list: List[int],
+    n_qubits_list: list[int],
     n_samples: int = 20,
     width: int = 4,
     height: int = 4,
     rounds: int = 5,
     p_success: float = 0.99,
     p_repair: float = 0.25,
-) -> Tuple[List[float], List[float]]:
+) -> tuple[list[float], list[float]]:
 
     placement: PlacementStrategy = RandomPlacementStrategy()
 
-    avg_timesteps: List[float] = []
-    avg_movements: List[float] = []
+    avg_timesteps: list[float] = []
+    avg_movements: list[float] = []
 
     strategy_dead = False
 
-    print(f"\n=== Starte Evaluation für {routing_strategy.__class__.__name__} ===")
-
-    for idx_q, n_qubits in enumerate(n_qubits_list, start=1):
+    for n_qubits in n_qubits_list:
         if strategy_dead:
-            print(
-                f"\nQubits: {n_qubits} ({idx_q}/{len(n_qubits_list)}) "
-                f"→ skipped (already dead), setze NaN."
-            )
             avg_timesteps.append(float("nan"))
             avg_movements.append(float("nan"))
             continue
 
-        timesteps_samples: List[int] = []
-        movements_samples: List[int] = []
-
-        print(f"\nQubits: {n_qubits} ({idx_q}/{len(n_qubits_list)})")
+        timesteps_samples: list[int] = []
+        movements_samples: list[int] = []
 
         for sample_idx in range(n_samples):
-            print(f"  Sample {sample_idx+1}/{n_samples} ...", end="", flush=True)
-
             base_seed = 1000 * n_qubits + sample_idx
             random.seed(base_seed)
 
@@ -105,68 +105,52 @@ def evaluate_strategy(
 
             try:
                 timelines, _ = simulator.run()
-            except Exception as e:
-                print(f" FAILED ({e})", flush=True)
+            except Exception:
                 continue
 
             timesteps_samples.append(total_timesteps(timelines))
             movements_samples.append(count_movements(timelines))
 
-            print(" done", flush=True)
-
         if timesteps_samples:
             avg_timesteps.append(mean(timesteps_samples))
             avg_movements.append(mean(movements_samples))
         else:
-            print(
-                f"  WARNUNG: Keine erfolgreichen Samples für n_qubits={n_qubits}, "
-                f"setze Wert auf NaN und markiere Strategie als DEAD."
-            )
             avg_timesteps.append(float("nan"))
             avg_movements.append(float("nan"))
-            strategy_dead = True  
+            strategy_dead = True
 
     return avg_timesteps, avg_movements
 
 
 def evaluate_strategy_vs_edge_expectation(
     routing_strategy: RoutingStrategy,
-    expectation_values: List[float],
+    expectation_values: list[float],
     n_qubits: int = 8,
     n_samples: int = 100,
     width: int = 3,
     height: int = 3,
     rounds: int = 5,
-    min_expectation: float = 0.0,   
-) -> Tuple[List[float], List[float]]:
+    min_expectation: float = 0.0,
+) -> tuple[list[float], list[float]]:
 
     placement: PlacementStrategy = RandomPlacementStrategy()
 
-    avg_timesteps: List[float] = []
-    avg_movements: List[float] = []
-
-    print(f"\n=== Starte Evaluation für {routing_strategy.__class__.__name__} "
-          f"über Erwartungswert der funktionierenden Kanten ===")
+    avg_timesteps: list[float] = []
+    avg_movements: list[float] = []
 
     for idx_e, expectation in enumerate(expectation_values, start=1):
         if expectation < min_expectation:
-            print(f"\nE={expectation:.2f} < {min_expectation} → skip → NaN")
-
             avg_timesteps.append(float("nan"))
             avg_movements.append(float("nan"))
             continue
 
-        timesteps_samples: List[int] = []
-        movements_samples: List[int] = []
+        timesteps_samples: list[int] = []
+        movements_samples: list[int] = []
 
         p_success = expectation
         p_repair = expectation
 
-        print(f"\nE={expectation:.2f} → p_success=p_repair={expectation:.2f}")
-
         for sample_idx in range(n_samples):
-            print(f"  Sample {sample_idx+1}/{n_samples} ...", end="", flush=True)
-
             base_seed = 10_000 * idx_e + sample_idx
             random.seed(base_seed)
 
@@ -189,13 +173,10 @@ def evaluate_strategy_vs_edge_expectation(
             try:
                 timelines, _ = simulator.run()
             except Exception:
-                print(" FAILED", flush=True)
                 continue
 
             timesteps_samples.append(total_timesteps(timelines))
             movements_samples.append(count_movements(timelines))
-
-            print(" done", flush=True)
 
         if timesteps_samples:
             avg_timesteps.append(mean(timesteps_samples))
@@ -208,39 +189,30 @@ def evaluate_strategy_vs_edge_expectation(
 
 
 def evaluate_strategies_over_grids(
-    routing_strategies: Dict[str, RoutingStrategy],
-    grid_sizes: List[Tuple[int, int]],
+    routing_strategies: dict[str, RoutingStrategy],
+    grid_sizes: list[tuple[int, int]],
     n_samples: int = 50,
     rounds: int = 5,
     p_success: float = 0.9,
     p_repair: float = 0.25,
-) -> Tuple[Dict[str, List[float]], Dict[str, List[float]], List[int]]:
+) -> tuple[dict[str, list[float]], dict[str, list[float]], list[int]]:
 
     placement: PlacementStrategy = RandomPlacementStrategy()
 
-    avg_timesteps: Dict[str, List[float]] = {name: [] for name in routing_strategies}
-    avg_movements: Dict[str, List[float]] = {name: [] for name in routing_strategies}
-    qubits_per_grid: List[int] = []
+    avg_timesteps: dict[str, list[float]] = {name: [] for name in routing_strategies}
+    avg_movements: dict[str, list[float]] = {name: [] for name in routing_strategies}
+    qubits_per_grid: list[int] = []
 
-    for (width, height) in grid_sizes:
+    for width, height in grid_sizes:
         n_sn = get_max_sn_nodes(width, height)
-        if (width, height) == (5, 5):
-            n_qubits = 12
-        else:
-            n_qubits = max(2, int(0.25 * n_sn))
+        n_qubits = 12 if (width, height) == (5, 5) else max(2, int(0.25 * n_sn))
         qubits_per_grid.append(n_qubits)
 
-        print(f"\n=== Grid {width}x{height}, SN={n_sn}, Qubits={n_qubits} ===")
-
         for strat_name, routing_strategy in routing_strategies.items():
-            print(f"\n--- Strategie: {strat_name} ---")
-
-            timesteps_samples: List[int] = []
-            movements_samples: List[int] = []
+            timesteps_samples: list[int] = []
+            movements_samples: list[int] = []
 
             for sample_idx in range(n_samples):
-                print(f"  Sample {sample_idx+1}/{n_samples} ...", end="", flush=True)
-
                 base_seed = 100_000 * (width * 10 + height) + sample_idx
                 random.seed(base_seed)
 
@@ -262,14 +234,11 @@ def evaluate_strategies_over_grids(
 
                 try:
                     timelines, _ = simulator.run()
-                except Exception as e:
-                    print(f" FAILED ({e})", flush=True)
+                except Exception:
                     continue
 
                 timesteps_samples.append(total_timesteps(timelines))
                 movements_samples.append(count_movements(timelines))
-
-                print(" done", flush=True)
 
             if timesteps_samples:
                 avg_timesteps[strat_name].append(mean(timesteps_samples))
@@ -283,34 +252,26 @@ def evaluate_strategies_over_grids(
 
 def evaluate_placements_for_routing(
     routing_strategy: RoutingStrategy,
-    placement_strategies: Dict[str, PlacementStrategy],
+    placement_strategies: dict[str, PlacementStrategy],
     width: int = 3,
     height: int = 3,
     n_samples: int = 100,
     rounds: int = 5,
     p_success: float = 0.998,
     p_repair: float = 0.25,
-    n_qubits: int = 8
-) -> Tuple[Dict[str, float], Dict[str, float], int]:
+    n_qubits: int = 8,
+) -> tuple[dict[str, float], dict[str, float], int]:
 
-    n_sn = get_max_sn_nodes(width, height)
+    get_max_sn_nodes(width, height)
 
-    print(f"\n=== Router: {routing_strategy.__class__.__name__} ===")
-    print(f"Grid: {width}x{height}, SN={n_sn}, Qubits={n_qubits}")
-    print(f"Samples={n_samples}, rounds={rounds}, p_success={p_success}, p_repair={p_repair}")
-
-    avg_timesteps: Dict[str, float] = {}
-    avg_movements: Dict[str, float] = {}
+    avg_timesteps: dict[str, float] = {}
+    avg_movements: dict[str, float] = {}
 
     for pname, placement in placement_strategies.items():
-        print(f"\n--- Placement-Strategie: {pname} ---")
-
-        timesteps_samples: List[int] = []
-        movements_samples: List[int] = []
+        timesteps_samples: list[int] = []
+        movements_samples: list[int] = []
 
         for sample_idx in range(n_samples):
-            print(f"  Sample {sample_idx+1}/{n_samples} ...", end="", flush=True)
-
             base_seed = 1_000_000 * hash(pname) % (2**31 - 1) + sample_idx
             random.seed(base_seed)
 
@@ -332,14 +293,11 @@ def evaluate_placements_for_routing(
 
             try:
                 timelines, _ = simulator.run()
-            except Exception as e:
-                print(f" FAILED ({e})", flush=True)
+            except Exception:
                 continue
 
             timesteps_samples.append(total_timesteps(timelines))
             movements_samples.append(count_movements(timelines))
-
-            print(" done", flush=True)
 
         if timesteps_samples:
             avg_timesteps[pname] = mean(timesteps_samples)
@@ -359,9 +317,9 @@ def evaluate_exception_rates_for_strategies_3x3(
     height: int = 3,
     p_success: float = 0.998,
     p_repair: float = 0.25,
-) -> Dict[str, List[float]]:
-    
-    routing_strategies: Dict[str, RoutingStrategy] = {
+) -> dict[str, list[float]]:
+
+    routing_strategies: dict[str, RoutingStrategy] = {
         "Default": DefaultRoutingPlanner(),
         "Reroute": RerouteRoutingPlanner(),
         "Rotation": RotationRoutingPlanner(),
@@ -371,35 +329,20 @@ def evaluate_exception_rates_for_strategies_3x3(
     placement: PlacementStrategy = RandomPlacementStrategy()
 
     n_qubits_list = list(range(n_qubits_min, n_qubits_max + 1))
-    exception_rates: Dict[str, List[float]] = {name: [] for name in routing_strategies}
+    exception_rates: dict[str, list[float]] = {name: [] for name in routing_strategies}
 
-    strategy_dead: Dict[str, bool] = {name: False for name in routing_strategies}
-
-    print("\n=== Exception-Rate Evaluation (3x3 Grid, RandomPlacement) ===")
-    print(f"Qubits {n_qubits_min}..{n_qubits_max}, Samples={n_samples}, "
-          f"p_success={p_success}, p_repair={p_repair}")
+    strategy_dead: dict[str, bool] = dict.fromkeys(routing_strategies, False)
 
     for n_qubits in n_qubits_list:
-        print(f"\n--- n_qubits = {n_qubits} ---")
-
         for strat_name, routing_strategy in routing_strategies.items():
             if strategy_dead[strat_name]:
                 exception_rates[strat_name].append(1.0)
-                print(f"  Strategie: {strat_name} → skipped (already dead), rate=1")
                 continue
-
-            print(f"  Strategie: {strat_name}")
 
             fail_count = 0
 
             for sample_idx in range(n_samples):
-                print(f"    Sample {sample_idx+1}/{n_samples} ...", end="", flush=True)
-
-                base_seed = (
-                    (hash(strat_name) & 0x7FFFFFFF) * 10_000
-                    + n_qubits * 100
-                    + sample_idx
-                )
+                base_seed = (hash(strat_name) & 0x7FFFFFFF) * 10_000 + n_qubits * 100 + sample_idx
                 random.seed(base_seed)
 
                 config = SimulationConfig(
@@ -420,18 +363,14 @@ def evaluate_exception_rates_for_strategies_3x3(
 
                 try:
                     simulator.run()
-                    print(" ok", flush=True)
-                except Exception as e:
+                except Exception:
                     fail_count += 1
-                    print(f" FAILED ({e})", flush=True)
 
             rate = fail_count / n_samples
             exception_rates[strat_name].append(rate)
-            print(f"  → Exception-Rate {strat_name} @ n_qubits={n_qubits}: {rate:.3f}")
 
             if rate >= 1.0:
                 strategy_dead[strat_name] = True
-                print(f"  → {strat_name} marked as DEAD (will skip future runs)")
 
     plt.figure(figsize=(10, 6))
     for strat_name, rates in exception_rates.items():
@@ -439,10 +378,7 @@ def evaluate_exception_rates_for_strategies_3x3(
 
     plt.xlabel("Anzahl Qubits")
     plt.ylabel("Exception-Rate")
-    plt.title(
-        "Exception-Rate vs. Qubit-Anzahl\n"
-        "3x3-Grid, RandomPlacement, p_success=0.998, p_repair=0.25, 100 Samples"
-    )
+    plt.title("Exception-Rate vs. Qubit-Anzahl\n3x3-Grid, RandomPlacement, p_success=0.998, p_repair=0.25, 100 Samples")
     plt.xticks(n_qubits_list, rotation=45)
     plt.ylim(-0.05, 1.05)
     plt.grid(True, which="both", linestyle="--", alpha=0.5)
@@ -455,17 +391,17 @@ def evaluate_exception_rates_for_strategies_3x3(
 
 
 def evaluate_exception_rates_vs_edge_expectation_3x3(
-    expectation_values: List[float] = None,
+    expectation_values: list[float] | None = None,
     n_qubits: int = 6,
     n_samples: int = 20,
     width: int = 3,
     height: int = 3,
     rounds: int = 5,
-) -> Dict[str, List[float]]:
+) -> dict[str, list[float]]:
     if expectation_values is None:
         expectation_values = [round(1.0 - 0.025 * i, 3) for i in range(41)]
 
-    routing_strategies: Dict[str, RoutingStrategy] = {
+    routing_strategies: dict[str, RoutingStrategy] = {
         "Default": DefaultRoutingPlanner(),
         "Reroute": RerouteRoutingPlanner(),
         "Rotation": RotationRoutingPlanner(),
@@ -474,33 +410,22 @@ def evaluate_exception_rates_vs_edge_expectation_3x3(
 
     placement: PlacementStrategy = RandomPlacementStrategy()
 
-    exception_rates: Dict[str, List[float]] = {name: [] for name in routing_strategies}
+    exception_rates: dict[str, list[float]] = {name: [] for name in routing_strategies}
 
-    strategy_dead: Dict[str, bool] = {name: False for name in routing_strategies}
-
-    print("\n=== Exception-Rate vs. Erwartungswert E (3x3 Grid, RandomPlacement) ===")
-    print(f"Grid: {width}x{height}, n_qubits={n_qubits}, Samples={n_samples}, rounds={rounds}")
-    print("E-Werte (absteigend ausgewertet):", expectation_values)
+    strategy_dead: dict[str, bool] = dict.fromkeys(routing_strategies, False)
 
     for E in expectation_values:
-        print(f"\n--- Erwartungswert E = {E:.2f} ---")
-
         p_success = E
         p_repair = E
 
         for strat_name, routing_strategy in routing_strategies.items():
             if strategy_dead[strat_name]:
                 exception_rates[strat_name].append(1.0)
-                print(f"  Strategie: {strat_name} → skipped (already dead), rate=0")
                 continue
-
-            print(f"  Strategie: {strat_name}")
 
             fail_count = 0
 
-            for sample_idx in range(n_samples):
-                print(f"    Sample {sample_idx+1}/{n_samples} ...", end="", flush=True)
-
+            for _sample_idx in range(n_samples):
                 base_seed = 42
                 random.seed(base_seed)
 
@@ -522,34 +447,27 @@ def evaluate_exception_rates_vs_edge_expectation_3x3(
 
                 try:
                     simulator.run()
-                    print(" ok", flush=True)
-                except Exception as e:
+                except Exception:
                     fail_count += 1
-                    print(f" FAILED ({e})", flush=True)
 
             rate = fail_count / n_samples
             exception_rates[strat_name].append(rate)
-            print(f"  → Exception-Rate {strat_name} @ E={E:.2f}: {rate:.3f}")
 
             if rate >= 1.0:
                 strategy_dead[strat_name] = True
-                print(f"  → {strat_name} marked as DEAD (will skip future E with rate=0)")
 
-    E_sorted = sorted(expectation_values) 
+    E_sorted = sorted(expectation_values)
 
     plt.figure(figsize=(10, 6))
     for strat_name, rates in exception_rates.items():
-        E_to_rate = {E: r for E, r in zip(expectation_values, rates)}
+        E_to_rate = dict(zip(expectation_values, rates, strict=False))
         rates_sorted = [E_to_rate[E] for E in E_sorted]
 
         plt.plot(E_sorted, rates_sorted, marker="o", label=strat_name)
 
     plt.xlabel("Erwartungswert E funktionierender Kanten")
     plt.ylabel("Exception-Rate")
-    plt.title(
-        "Exception-Rate vs. Erwartungswert E\n"
-        f"3x3-Grid, n_qubits={n_qubits}, RandomPlacement, 100 Samples pro E"
-    )
+    plt.title(f"Exception-Rate vs. Erwartungswert E\n3x3-Grid, n_qubits={n_qubits}, RandomPlacement, 100 Samples pro E")
     plt.xticks(E_sorted, rotation=45)
     plt.ylim(-0.05, 1.05)
     plt.grid(True, which="both", linestyle="--", alpha=0.5)
@@ -569,8 +487,8 @@ def evaluate_runtimes_for_strategies_3x3(
     height: int = 3,
     p_success: float = 0.998,
     p_repair: float = 0.25,
-) -> Dict[str, List[float]]:
-    routing_strategies: Dict[str, RoutingStrategy] = {
+) -> dict[str, list[float]]:
+    routing_strategies: dict[str, RoutingStrategy] = {
         "Default": DefaultRoutingPlanner(),
         "Reroute": RerouteRoutingPlanner(),
         "Rotation": RotationRoutingPlanner(),
@@ -580,36 +498,21 @@ def evaluate_runtimes_for_strategies_3x3(
     placement: PlacementStrategy = RandomPlacementStrategy()
 
     n_qubits_list = list(range(n_qubits_min, n_qubits_max + 1))
-    runtimes: Dict[str, List[float]] = {name: [] for name in routing_strategies}
+    runtimes: dict[str, list[float]] = {name: [] for name in routing_strategies}
 
-    strategy_dead: Dict[str, bool] = {name: False for name in routing_strategies}
-
-    print("\n=== Runtime Evaluation (3x3 Grid, RandomPlacement) ===")
-    print(f"Qubits {n_qubits_min}..{n_qubits_max}, Samples={n_samples}, "
-          f"p_success={p_success}, p_repair={p_repair}")
+    strategy_dead: dict[str, bool] = dict.fromkeys(routing_strategies, False)
 
     for n_qubits in n_qubits_list:
-        print(f"\n--- n_qubits = {n_qubits} ---")
-
         for strat_name, routing_strategy in routing_strategies.items():
             if strategy_dead[strat_name]:
                 runtimes[strat_name].append(float("nan"))
-                print(f"  Strategie: {strat_name} → skipped (already dead), runtime=NaN")
                 continue
 
-            print(f"  Strategie: {strat_name}")
-
-            sample_runtimes: List[float] = []
+            sample_runtimes: list[float] = []
             fail_count = 0
 
             for sample_idx in range(n_samples):
-                print(f"    Sample {sample_idx+1}/{n_samples} ...", end="", flush=True)
-
-                base_seed = (
-                    (hash(strat_name) & 0x7FFFFFFF) * 10_000
-                    + n_qubits * 100
-                    + sample_idx
-                )
+                base_seed = (hash(strat_name) & 0x7FFFFFFF) * 10_000 + n_qubits * 100 + sample_idx
                 random.seed(base_seed)
 
                 config = SimulationConfig(
@@ -631,23 +534,16 @@ def evaluate_runtimes_for_strategies_3x3(
                 start_t = time.perf_counter()
                 try:
                     simulator.run()
-                    print(" ok", flush=True)
-                except Exception as e:
+                except Exception:
                     fail_count += 1
-                    print(f" FAILED ({e})", flush=True)
                 finally:
                     duration = time.perf_counter() - start_t
                     sample_runtimes.append(duration)
 
             avg_runtime = mean(sample_runtimes)
             runtimes[strat_name].append(avg_runtime)
-            print(f"  → Avg runtime {strat_name} @ n_qubits={n_qubits}: {avg_runtime:.6f} s")
 
             if fail_count == n_samples:
-                print(
-                    f"  WARNUNG: Keine erfolgreichen Runs für {strat_name} "
-                    f"@ n_qubits={n_qubits}, markiere Strategie als DEAD."
-                )
                 strategy_dead[strat_name] = True
 
     plt.figure(figsize=(10, 6))
@@ -673,32 +569,26 @@ def evaluate_runtimes_for_strategies_3x3(
 
 def evaluate_strategy_with_errorbars(
     routing_strategy: RoutingStrategy,
-    n_qubits_list: List[int],
+    n_qubits_list: list[int],
     n_samples: int = 20,
     width: int = 3,
     height: int = 3,
     rounds: int = 5,
     p_success: float = 0.99,
     p_repair: float = 0.25,
-) -> Tuple[List[float], List[float], List[float], List[float], List[int]]:
+) -> tuple[list[float], list[float], list[float], list[float], list[int]]:
     placement: PlacementStrategy = RandomPlacementStrategy()
 
-    t_mean: List[float] = []
-    t_std: List[float] = []
-    m_mean: List[float] = []
-    m_std: List[float] = []
-    n_success: List[int] = []
+    t_mean: list[float] = []
+    t_std: list[float] = []
+    m_mean: list[float] = []
+    m_std: list[float] = []
+    n_success: list[int] = []
 
     strategy_dead = False
 
-    print(f"\n=== Starte Evaluation für {routing_strategy.__class__.__name__} ===")
-
-    for idx_q, n_qubits in enumerate(n_qubits_list, start=1):
+    for n_qubits in n_qubits_list:
         if strategy_dead:
-            print(
-                f"\nQubits: {n_qubits} ({idx_q}/{len(n_qubits_list)}) "
-                f"→ skipped (already dead), setze NaN."
-            )
             t_mean.append(float("nan"))
             t_std.append(float("nan"))
             m_mean.append(float("nan"))
@@ -706,14 +596,10 @@ def evaluate_strategy_with_errorbars(
             n_success.append(0)
             continue
 
-        timesteps_samples: List[int] = []
-        movements_samples: List[int] = []
-
-        print(f"\nQubits: {n_qubits} ({idx_q}/{len(n_qubits_list)})")
+        timesteps_samples: list[int] = []
+        movements_samples: list[int] = []
 
         for sample_idx in range(n_samples):
-            print(f"  Sample {sample_idx+1}/{n_samples} ...", end="", flush=True)
-
             base_seed = 1000 * n_qubits + sample_idx
             random.seed(base_seed)
 
@@ -735,13 +621,11 @@ def evaluate_strategy_with_errorbars(
 
             try:
                 timelines, _ = simulator.run()
-            except Exception as e:
-                print(f" FAILED ({e})", flush=True)
+            except Exception:
                 continue
 
             timesteps_samples.append(total_timesteps(timelines))
             movements_samples.append(count_movements(timelines))
-            print(" done", flush=True)
 
         n_success.append(len(timesteps_samples))
 
@@ -752,10 +636,6 @@ def evaluate_strategy_with_errorbars(
             t_std.append(stdev(timesteps_samples) if len(timesteps_samples) > 1 else 0.0)
             m_std.append(stdev(movements_samples) if len(movements_samples) > 1 else 0.0)
         else:
-            print(
-                f"  WARNUNG: Keine erfolgreichen Samples für n_qubits={n_qubits}, "
-                f"setze Wert auf NaN und markiere Strategie als DEAD."
-            )
             t_mean.append(float("nan"))
             t_std.append(float("nan"))
             m_mean.append(float("nan"))
@@ -767,54 +647,50 @@ def evaluate_strategy_with_errorbars(
 
 def save_results_csv(
     path: str,
-    n_qubits_list: List[int],
+    n_qubits_list: list[int],
     strategy_name: str,
-    timesteps_mean: List[float],
-    timesteps_std: List[float],
-    movements_mean: List[float],
-    movements_std: List[float],
-    n_success: List[int],
+    timesteps_mean: list[float],
+    timesteps_std: list[float],
+    movements_mean: list[float],
+    movements_std: list[float],
+    n_success: list[int],
     n_samples: int,
 ) -> None:
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    pathlib.Path(pathlib.Path(path).parent or ".").mkdir(exist_ok=True, parents=True)
 
-    file_exists = os.path.exists(path)
-    with open(path, "a", newline="", encoding="utf-8") as f:
+    file_exists = pathlib.Path(path).exists()
+    with pathlib.Path(path).open("a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(
-                [
-                    "strategy",
-                    "n_qubits",
-                    "timesteps_mean",
-                    "timesteps_std",
-                    "movements_mean",
-                    "movements_std",
-                    "n_success",
-                    "n_samples",
-                ]
-            )
+            writer.writerow([
+                "strategy",
+                "n_qubits",
+                "timesteps_mean",
+                "timesteps_std",
+                "movements_mean",
+                "movements_std",
+                "n_success",
+                "n_samples",
+            ])
         for i, nq in enumerate(n_qubits_list):
-            writer.writerow(
-                [
-                    strategy_name,
-                    nq,
-                    timesteps_mean[i],
-                    timesteps_std[i],
-                    movements_mean[i],
-                    movements_std[i],
-                    n_success[i],
-                    n_samples,
-                ]
-            )
+            writer.writerow([
+                strategy_name,
+                nq,
+                timesteps_mean[i],
+                timesteps_std[i],
+                movements_mean[i],
+                movements_std[i],
+                n_success[i],
+                n_samples,
+            ])
 
 
-def load_results_csv(path: str) -> Dict[str, Dict[int, Dict[str, float]]]:
-    data: Dict[str, Dict[int, Dict[str, float]]] = {}
-    if not os.path.exists(path):
+def load_results_csv(path: str) -> dict[str, dict[int, dict[str, float]]]:
+    data: dict[str, dict[int, dict[str, float]]] = {}
+    if not pathlib.Path(path).exists():
         return data
 
-    with open(path, "r", newline="", encoding="utf-8") as f:
+    with pathlib.Path(path).open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             strat = row["strategy"]
@@ -832,8 +708,8 @@ def load_results_csv(path: str) -> Dict[str, Dict[int, Dict[str, float]]]:
 
 
 def plot_two_axis_with_errorbars(
-    n_qubits_list: List[int],
-    results: Dict[str, Dict[int, Dict[str, float]]],
+    n_qubits_list: list[int],
+    results: dict[str, dict[int, dict[str, float]]],
     out_png: str,
     title: str,
 ) -> None:
@@ -887,9 +763,8 @@ def plot_two_axis_with_errorbars(
             frameon=True,
         )
         legend.get_frame().set_facecolor("white")
-        legend.get_frame().set_edgecolor("black")   
-        legend.get_frame().set_alpha(1.0) 
-
+        legend.get_frame().set_edgecolor("black")
+        legend.get_frame().set_alpha(1.0)
 
         fig.tight_layout()
         fig.savefig(out_png, dpi=300)
@@ -897,19 +772,19 @@ def plot_two_axis_with_errorbars(
 
 
 def plot_two_axis_no_errorbars(
-    n_qubits_list: List[int],
-    results: Dict[str, Dict[int, Dict[str, float]]],
+    n_qubits_list: list[int],
+    results: dict[str, dict[int, dict[str, float]]],
     out_png: str,
     title: str,
 ) -> None:
     with plt.style.context(["science", "nature"]):
         plt.rcParams.update({
-            "font.size": 14,       
-            "axes.labelsize": 13,   
-            "axes.titlesize": 12,   
-            "xtick.labelsize": 12,  
+            "font.size": 14,
+            "axes.labelsize": 13,
+            "axes.titlesize": 12,
+            "xtick.labelsize": 12,
             "ytick.labelsize": 12,
-            "legend.fontsize": 12, 
+            "legend.fontsize": 12,
         })
         fig, ax1 = plt.subplots(figsize=(8, 4))
         ax2 = ax1.twinx()
@@ -931,7 +806,7 @@ def plot_two_axis_no_errorbars(
                 t_mean,
                 marker="o",
                 linestyle="-",
-                color = "#ed9015" if strat_name == "Rotation Algorithm with Waiting" else "tab:blue",
+                color="#ed9015" if strat_name == "Rotation Algorithm with Waiting" else "tab:blue",
                 label=f"{strat_name} (Timesteps)",
             )
 
@@ -940,7 +815,7 @@ def plot_two_axis_no_errorbars(
                 m_mean,
                 marker="s",
                 linestyle="--",
-                color = "#ed9015" if strat_name == "Rotation Algorithm with Waiting" else "tab:blue",
+                color="#ed9015" if strat_name == "Rotation Algorithm with Waiting" else "tab:blue",
                 label=f"{strat_name} (Movements)",
             )
 
@@ -959,27 +834,26 @@ def plot_two_axis_no_errorbars(
             l1 + l2,
             loc="best",
             borderaxespad=0.7,
-            borderpad=0.5, 
+            borderpad=0.5,
             frameon=True,
         )
         legend.get_frame().set_facecolor("white")
-        legend.get_frame().set_edgecolor("black")   
-        legend.get_frame().set_alpha(1.0) 
+        legend.get_frame().set_edgecolor("black")
+        legend.get_frame().set_alpha(1.0)
 
         fig.tight_layout()
         fig.savefig(out_png, dpi=300)
         plt.show()
 
 
-
-def main():
+def main() -> None:
     width, height = 3, 3
     rounds = 5
     p_success = 0.99
     p_repair = 0.25
     n_samples = 50
 
-    n_qubits_list = list(range(2, 25))  
+    n_qubits_list = list(range(2, 25))
 
     csv_path = "results_strategy_3x3.csv"
     plot_path = "strategy_3x3_timesteps_movements.pdf"
@@ -992,10 +866,7 @@ def main():
     }
 
     for strat_name, strat in strategies.items():
-        missing_any = (
-            strat_name not in existing
-            or any(nq not in existing[strat_name] for nq in n_qubits_list)
-        )
+        missing_any = strat_name not in existing or any(nq not in existing[strat_name] for nq in n_qubits_list)
         if missing_any:
             already = existing.get(strat_name, {})
             todo_nqs = [nq for nq in n_qubits_list if nq not in already]
@@ -1036,9 +907,6 @@ def main():
         out_png=plot_path,
         title="",
     )
-
-    print(f"\nCSV gespeichert unter: {os.path.abspath(csv_path)}")
-    print(f"Plot gespeichert unter: {os.path.abspath(plot_path)}")
 
 
 if __name__ == "__main__":

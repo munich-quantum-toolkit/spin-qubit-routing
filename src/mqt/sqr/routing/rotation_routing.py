@@ -1,13 +1,23 @@
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
 from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import networkx as nx
 
-from mqt.sqr.routing.common import Coord, Qubit, TimedNode
 from mqt.sqr.routing.default_routing import DefaultRoutingPlanner
 from mqt.sqr.routing.routing_strategy import RoutingResult, RoutingStrategy
+
+if TYPE_CHECKING:
+    from mqt.sqr.routing.common import Coord, Qubit, TimedNode
 
 MAX_WAIT_TIME = 100
 
@@ -24,10 +34,7 @@ class RotationRoutingPlanner(RoutingStrategy):
         rt = RouteRuntime(G, qubits, p_success, p_repair)
 
         live_pre_by_pair: dict[tuple[int, int], dict[int, Coord]] = {}
-        pair_order: dict[tuple[int, int], int] = {
-            (qa.id, qb.id): index
-            for index, (qa, qb) in enumerate(pairs)
-        }
+        pair_order: dict[tuple[int, int], int] = {(qa.id, qb.id): index for index, (qa, qb) in enumerate(pairs)}
         remaining: set[tuple[int, int]] = {(qa.id, qb.id) for qa, qb in pairs}
 
         while remaining:
@@ -106,15 +113,12 @@ class RotationRoutingPlanner(RoutingStrategy):
                         parallel_failed = True
                         break
 
-                    updates = expand_runtime_rotations(
-                        rt.current_pos, updates_pair_only, step_diamonds
-                    )
+                    updates = expand_runtime_rotations(rt.current_pos, updates_pair_only, step_diamonds)
                     do_sample = False not in sample_flags
 
                     moved = rt.commit_tick(updates, sample=do_sample)
                     if moved:
-                        for pid, pre in pending_live_pre.items():
-                            live_pre_by_pair[pid] = pre
+                        live_pre_by_pair.update(dict(pending_live_pre.items()))
                         step += 1
                     else:
                         continue
@@ -136,17 +140,15 @@ class RotationRoutingPlanner(RoutingStrategy):
 
                             if plan.out_idx is not None and step == plan.out_idx:
                                 pre_map = live_pre_by_pair.get(
-                                pid,
-                                {
-                                    a_id: rt.current_pos[a_id],
-                                    b_id: rt.current_pos[b_id],
-                                },
-                            )
+                                    pid,
+                                    {
+                                        a_id: rt.current_pos[a_id],
+                                        b_id: rt.current_pos[b_id],
+                                    },
+                                )
                                 s = SoloStep({a_id: pre_map[a_id], b_id: pre_map[b_id]}, False, [])
 
-                            updates = expand_runtime_rotations(
-                                rt.current_pos, s.updates_pair_only, s.diamonds
-                            )
+                            updates = expand_runtime_rotations(rt.current_pos, s.updates_pair_only, s.diamonds)
                             moved = rt.commit_tick(updates, sample=s.sample)
                             if moved:
                                 if pending_pre is not None:
@@ -155,8 +157,7 @@ class RotationRoutingPlanner(RoutingStrategy):
                             else:
                                 continue
 
-                for pid in grp:
-                    remaining.discard(pid)
+                remaining.difference_update(grp)
 
                 finished = True
                 break
@@ -187,9 +188,7 @@ class RotationRoutingPlanner(RoutingStrategy):
                             )
                             s = SoloStep({a: pre_map[a], b: pre_map[b]}, False, [])
 
-                        updates = expand_runtime_rotations(
-                            rt.current_pos, s.updates_pair_only, s.diamonds
-                        )
+                        updates = expand_runtime_rotations(rt.current_pos, s.updates_pair_only, s.diamonds)
                         moved = rt.commit_tick(updates, sample=s.sample)
                         if moved:
                             if pending_pre is not None:
@@ -216,14 +215,9 @@ class RotationRoutingPlanner(RoutingStrategy):
         in_idx: int | None = None
         out_idx: int | None = None
 
-        cands = DefaultRoutingPlanner._best_meeting_candidates(
-            rt.G, la, lb, reserved=set(), forbidden_nodes=set()
-        )
+        cands = DefaultRoutingPlanner._best_meeting_candidates(rt.G, la, lb, reserved=set(), forbidden_nodes=set())
 
-        best_choice: (
-            tuple[Coord, tuple[Coord, list[Coord]], tuple[Coord, list[Coord]]]
-            | None
-        ) = None
+        best_choice: tuple[Coord, tuple[Coord, list[Coord]], tuple[Coord, list[Coord]]] | None = None
         for meet in cands:
             if not is_in(rt.G, meet):
                 continue
@@ -251,9 +245,7 @@ class RotationRoutingPlanner(RoutingStrategy):
                     dA = diamond_for_edge(rt.G, uA, vA)
                     if dA:
                         dirA = rot_dir(dA, uA, vA)
-                        updA = compute_pair_rotation_updates_for_diamond(
-                            dA, dirA, a_id, b_id, la, lb
-                        )
+                        updA = compute_pair_rotation_updates_for_diamond(dA, dirA, a_id, b_id, la, lb)
                         updA[a_id] = vA
                         updates.update(updA)
                         diamonds_for_step.append((dA, dirA))
@@ -269,24 +261,17 @@ class RotationRoutingPlanner(RoutingStrategy):
                     dB = diamond_for_edge(rt.G, uB, vB)
                     if dB:
                         dirB = rot_dir(dB, uB, vB)
-                        updB = compute_pair_rotation_updates_for_diamond(
-                            dB, dirB, a_id, b_id, la, lb
-                        )
+                        updB = compute_pair_rotation_updates_for_diamond(dB, dirB, a_id, b_id, la, lb)
                         updB[b_id] = vB
-                        overlaps_existing = (
-                            diamonds_for_step
-                            and set(diamonds_for_step[0][0]).intersection(dB)
-                        )
+                        overlaps_existing = diamonds_for_step and set(diamonds_for_step[0][0]).intersection(dB)
                         if not overlaps_existing:
                             updates.update(updB)
                             diamonds_for_step.append((dB, dirB))
                             used_diamonds.add(canonical_diamond_tuple(dB))
-                    else:
-                        if b_id not in updates:
-                            updates[b_id] = vB
-                else:
-                    if b_id not in updates:
+                    elif b_id not in updates:
                         updates[b_id] = vB
+                elif b_id not in updates:
+                    updates[b_id] = vB
 
             if not updates:
                 return None
@@ -429,16 +414,16 @@ def compute_pair_rotation_updates_for_diamond(
 
 
 def plans_compatible_distance(
-    p1: 'SoloPlan',
+    p1: SoloPlan,
     ab1: tuple[int, int],
-    p2: 'SoloPlan',
+    p2: SoloPlan,
     ab2: tuple[int, int],
 ) -> bool:
     a1, b1 = ab1
     a2, b2 = ab2
     L = max(p1.length, p2.length)
 
-    def pos(plan: 'SoloPlan', qid: int, i: int) -> Coord:
+    def pos(plan: SoloPlan, qid: int, i: int) -> Coord:
         trace = plan.pos_trace[qid]
         return trace[i] if i < len(trace) else trace[-1]
 
@@ -454,25 +439,17 @@ def plans_compatible_distance(
     return True
 
 
-def plans_compatible_diamonds(p1: 'SoloPlan', p2: 'SoloPlan') -> bool:
+def plans_compatible_diamonds(p1: SoloPlan, p2: SoloPlan) -> bool:
     L = max(p1.length, p2.length)
     for i in range(L):
-        d1 = (
-            {canonical_diamond_tuple(D) for (D, _dir) in p1.ticks[i].diamonds}
-            if i < p1.length
-            else set()
-        )
-        d2 = (
-            {canonical_diamond_tuple(D) for (D, _dir) in p2.ticks[i].diamonds}
-            if i < p2.length
-            else set()
-        )
+        d1 = {canonical_diamond_tuple(D) for (D, _dir) in p1.ticks[i].diamonds} if i < p1.length else set()
+        d2 = {canonical_diamond_tuple(D) for (D, _dir) in p2.ticks[i].diamonds} if i < p2.length else set()
         if not d1.isdisjoint(d2):
             return False
     return True
 
 
-def group_parallel(plans: dict[tuple[int, int], 'SoloPlan']) -> list[list[tuple[int, int]]]:
+def group_parallel(plans: dict[tuple[int, int], SoloPlan]) -> list[list[tuple[int, int]]]:
     remaining = sorted(plans.keys())
     groups: list[list[tuple[int, int]]] = []
     used: set[tuple[int, int]] = set()
@@ -556,7 +533,7 @@ def is_ready_pair(
         if pair_order[other] >= idx:
             continue
         x, y = other
-        if x in (a, b) or y in (a, b):
+        if x in {a, b} or y in {a, b}:
             return False
     return True
 
@@ -619,9 +596,8 @@ class RouteRuntime:
             if e in self.defective_edges:
                 if random.random() < self.p_repair:
                     self.defective_edges.discard(e)
-            else:
-                if random.random() < (1.0 - self.p_success):
-                    self.defective_edges.add(e)
+            elif random.random() < (1.0 - self.p_success):
+                self.defective_edges.add(e)
 
     def would_use_defect(self, pending: dict[int, Coord]) -> bool:
         for qid, newp in pending.items():
@@ -653,9 +629,7 @@ class RouteRuntime:
         self.edge_timebands.append((self.t - 1, self.t, set(self.defective_edges)))
 
         if self.wait_streak >= MAX_WAIT_TIME:
-            raise RuntimeError(
-                f"Routing stuck: {self.wait_streak} aufeinanderfolgende Timesteps "
-                f"ohne Bewegung (t={self.t})."
-            )
+            msg = f"Routing stuck: {self.wait_streak} aufeinanderfolgende Timesteps ohne Bewegung (t={self.t})."
+            raise RuntimeError(msg)
 
         return moved

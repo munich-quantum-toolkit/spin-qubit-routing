@@ -1,12 +1,19 @@
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TypeAlias
-
-import networkx as nx
+from typing import TYPE_CHECKING, TypeAlias
 
 from mqt.sqr.routing.common import Coord, Qubit, TimedNode
 
+if TYPE_CHECKING:
+    import networkx as nx
 
 QubitPair: TypeAlias = tuple[Qubit, Qubit]
 DefectiveEdge: TypeAlias = frozenset[Coord]
@@ -26,5 +33,4 @@ class RoutingStrategy(ABC):
         pairs: list[QubitPair],
         p_success: float,
         p_repair: float,
-    ) -> RoutingResult:
-        ...
+    ) -> RoutingResult: ...

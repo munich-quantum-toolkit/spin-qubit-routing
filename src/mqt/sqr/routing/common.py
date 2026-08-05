@@ -1,12 +1,20 @@
+# Copyright (c) 2026 Chair for Design Automation, TUM
+# All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# Licensed under the MIT License
+
 from __future__ import annotations
 
+import itertools
 from collections import defaultdict
 from dataclasses import dataclass
 from heapq import heappop, heappush
-from typing import TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
-import networkx as nx
-
+if TYPE_CHECKING:
+    import networkx as nx
 
 Coord: TypeAlias = tuple[int, int]
 TimedNode: TypeAlias = tuple[Coord, int]
@@ -29,16 +37,9 @@ class Reservations:
         G: nx.Graph,
         blocked_edges: set[Edge] | None = None,
     ) -> None:
-        self.node_caps: dict[Coord, dict[int, int]] = defaultdict(
-            lambda: defaultdict(int)
-        )
-        self.edge_caps: dict[Edge, dict[int, int]] = defaultdict(
-            lambda: defaultdict(int)
-        )
-        self.node_type: dict[Coord, str] = {
-            node: G.nodes[node]["type"]
-            for node in G.nodes
-        }
+        self.node_caps: dict[Coord, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+        self.edge_caps: dict[Edge, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+        self.node_type: dict[Coord, str] = {node: G.nodes[node]["type"] for node in G.nodes}
         self.blocked_edges = blocked_edges or set()
 
     def node_capacity(self, node: Coord) -> int:
@@ -75,7 +76,7 @@ class Reservations:
     def commit(self, path: list[TimedNode]) -> None:
         self.occupy_node(*path[0])
 
-        for (source, time), (target, next_time) in zip(path, path[1:]):
+        for (source, time), (target, next_time) in itertools.pairwise(path):
             self.occupy_node(target, next_time)
 
             if source != target:
@@ -97,9 +98,7 @@ class AStar:
             )
 
         start_state: TimedNode = (start, 0)
-        distances: dict[TimedNode, Cost] = {
-            start_state: (0, 0)
-        }
+        distances: dict[TimedNode, Cost] = {start_state: (0, 0)}
         came_from: dict[TimedNode, TimedNode] = {}
 
         open_queue: list[QueueEntry] = []
@@ -127,22 +126,16 @@ class AStar:
                 continue
 
             successors = [(node, time + 1, 0, 1)]
-            successors.extend(
-                (neighbor, time + 1, 1, 1)
-                for neighbor in G.neighbors(node)
-            )
+            successors.extend((neighbor, time + 1, 1, 1) for neighbor in G.neighbors(node))
 
             for next_node, next_time, move_delta, time_delta in successors:
                 if not reservations.can_occupy(next_node, next_time):
                     continue
 
-                if (
-                    next_node != node
-                    and not reservations.can_traverse(
-                        node,
-                        next_node,
-                        time,
-                    )
+                if next_node != node and not reservations.can_traverse(
+                    node,
+                    next_node,
+                    time,
                 ):
                     continue
 
