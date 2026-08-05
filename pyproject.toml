@@ -106,15 +106,13 @@ select = ["ALL"]
 ignore = [
     "C90",     # <...> too complex
     "COM812",  # Conflicts with formatter
+    "D",       # We do not have docstrings yet
     "PLR09",   # Too many <...>
+    "PLR1702", # Too many nested blocks
     "PLR2004", # Magic value used in comparison
     "S101",    # Use of assert detected
     "S311",    # Standard pseudo-random generators are not suitable for cryptographic purposes
     "S404",    # `subprocess` module is possibly insecure
-]
-extend-ignore = [
-    "D",       # We do not have docstrings yet
-    "PLR1702", # Too many nested blocks
 ]
 future-annotations = true
 
@@ -157,6 +155,11 @@ MY100 = "We use ty instead of mypy"
 PC111 = "We use ruff instead of blacken-docs"
 PC160 = "We use a mirror of crate-ci/typos"
 PC170 = "We do not use rST files anymore"
+# Temporary ignores
+GH100 = "We do not have tests yet"
+PY004 = "We do not have docs yet"
+PY005 = "We do not have tests yet"
+PY007 = "We do not have tests yet"
 
 
 [tool.ty.terminal]
