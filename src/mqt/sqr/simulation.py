@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
-from src.mqt.sqr.routing.routing_strategy import RoutingStrategy
-from src.mqt.sqr.placements.placement_strategy import PlacementStrategy
+from mqt.sqr.routing.routing_strategy import RoutingStrategy
+from mqt.sqr.placements.placement_strategy import PlacementStrategy
 
-from src.mqt.sqr.utils.animation import animate_mapf
+from mqt.sqr.utils.animation import animate_mapf
 
 
 @dataclass

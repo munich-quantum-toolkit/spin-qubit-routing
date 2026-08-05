@@ -4,10 +4,10 @@ import random
 
 import networkx as nx
 
-from src.mqt.sqr.placements.placement_strategy import PlacementStrategy
-from src.mqt.sqr.routing.common import Coord, Qubit
-from src.mqt.sqr.routing.rotation_routing import RotationRoutingPlanner
-from src.mqt.sqr.utils.network import NetworkBuilder
+from mqt.sqr.placements.placement_strategy import PlacementStrategy
+from mqt.sqr.routing.common import Coord, Qubit
+from mqt.sqr.routing.rotation_routing import RotationRoutingPlanner
+from mqt.sqr.utils.network import NetworkBuilder
 
 
 class ReverseTraversalPlacementStrategy(PlacementStrategy):

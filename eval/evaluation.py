@@ -9,18 +9,18 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 
-from src.mqt.sqr.routing.common import TimedNode  
-from src.mqt.sqr.routing.routing_strategy import RoutingStrategy
-from src.mqt.sqr.routing.default_routing import DefaultRoutingPlanner
-from src.mqt.sqr.routing.routing_with_reroute import RerouteRoutingPlanner
-from src.mqt.sqr.routing.rotation_routing import RotationRoutingPlanner
-from src.mqt.sqr.routing.rotation_cycles_routing import HybridRotationRoutingPlanner
-from src.mqt.sqr.placements.placement_strategy import PlacementStrategy
-from src.mqt.sqr.placements.random_strategy import RandomPlacementStrategy
-from src.mqt.sqr.placements.reverse_traversal_strategy import ReverseTraversalPlacementStrategy
-from src.mqt.sqr.placements.interaction_placement_strategy import InteractionPlacementStrategy
-from src.mqt.sqr.simulation import SimulationConfig, RoutingSimulator
-from src.mqt.sqr.utils.network import NetworkBuilder  
+from mqt.sqr.routing.common import TimedNode  
+from mqt.sqr.routing.routing_strategy import RoutingStrategy
+from mqt.sqr.routing.default_routing import DefaultRoutingPlanner
+from mqt.sqr.routing.routing_with_reroute import RerouteRoutingPlanner
+from mqt.sqr.routing.rotation_routing import RotationRoutingPlanner
+from mqt.sqr.routing.rotation_cycles_routing import HybridRotationRoutingPlanner
+from mqt.sqr.placements.placement_strategy import PlacementStrategy
+from mqt.sqr.placements.random_strategy import RandomPlacementStrategy
+from mqt.sqr.placements.reverse_traversal_strategy import ReverseTraversalPlacementStrategy
+from mqt.sqr.placements.interaction_placement_strategy import InteractionPlacementStrategy
+from mqt.sqr.simulation import SimulationConfig, RoutingSimulator
+from mqt.sqr.utils.network import NetworkBuilder  
 
 def count_movements(timelines: Dict[int, List[TimedNode]]) -> int:
     moves = 0

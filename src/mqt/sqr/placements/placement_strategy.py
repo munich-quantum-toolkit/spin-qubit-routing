@@ -5,8 +5,8 @@ from abc import ABC, abstractmethod
 
 import networkx as nx
 
-from src.mqt.sqr.routing.common import Qubit
-from src.mqt.sqr.utils.network import NetworkBuilder
+from mqt.sqr.routing.common import Qubit
+from mqt.sqr.utils.network import NetworkBuilder
 
 
 class PlacementStrategy(ABC):

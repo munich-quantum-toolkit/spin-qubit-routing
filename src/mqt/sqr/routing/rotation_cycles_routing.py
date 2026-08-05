@@ -6,9 +6,9 @@ from dataclasses import dataclass
 
 import networkx as nx
 
-from src.mqt.sqr.routing.common import Coord, Qubit, TimedNode
-from src.mqt.sqr.routing.default_routing import DefaultRoutingPlanner
-from src.mqt.sqr.routing.routing_strategy import RoutingResult, RoutingStrategy
+from mqt.sqr.routing.common import Coord, Qubit, TimedNode
+from mqt.sqr.routing.default_routing import DefaultRoutingPlanner
+from mqt.sqr.routing.routing_strategy import RoutingResult, RoutingStrategy
 
 MAX_WAIT_TIME = 100
 
