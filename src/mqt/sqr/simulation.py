@@ -8,12 +8,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from mqt.sqr.utils.animation import animate_mapf
 
 if TYPE_CHECKING:
+    from collections.abc import Hashable
+
     from mqt.sqr.placements.placement_strategy import PlacementStrategy
+    from mqt.sqr.routing.common import TimedNode
     from mqt.sqr.routing.routing_strategy import RoutingResult, RoutingStrategy
 
 
@@ -56,6 +59,8 @@ class RoutingSimulator:
             self.config.p_repair,
         )
 
-        animate_mapf(graph, timelines, edge_timebands=edge_timebands, smooth=True)
+        animate_mapf(
+            graph, cast("dict[Hashable, list[TimedNode]]", timelines), edge_timebands=edge_timebands, smooth=True
+        )
 
         return timelines, edge_timebands

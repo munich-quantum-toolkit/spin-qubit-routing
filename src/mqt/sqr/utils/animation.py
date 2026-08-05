@@ -134,7 +134,7 @@ def _agent_sort_key(agent_id: AgentId) -> tuple[int, int | str]:
 
 def animate_mapf(
     graph: nx.Graph,
-    plans: Mapping[int, Sequence[TimedNode]],
+    plans: Mapping[AgentId, Sequence[TimedNode]],
     interval_ms: float = 0.1,
     substeps: int = 200,
     edge_timebands: Sequence[EdgeTimeBand] | None = None,
