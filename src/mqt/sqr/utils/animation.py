@@ -44,8 +44,8 @@ AGENT_COLORS = (
 class AgentAnimationData:
     agent_id: AgentId
     color: str
-    positions: list[Position]
-    frames: list[float]
+    positions: list[Position] | list[Coord]
+    frames: list[float] | list[int]
     last_index: int
     frame_to_position: dict[float, Position]
     first_frame: float | None
@@ -112,12 +112,12 @@ def _make_smooth_positions(
 
 def _make_step_positions(
     path: Sequence[TimedNode],
-) -> tuple[list[Position], list[float], int]:
+) -> tuple[list[Coord], list[int], int]:
     if not path:
         return [], [], -1
 
     positions_by_time, start_time, end_time = _build_time_indexed_positions(path)
-    frames = list(range(start_time, end_time + 1))
+    frames: list[int] = list(range(start_time, end_time + 1))
     positions = [positions_by_time[time] for time in frames]
 
     return positions, frames, len(positions) - 1
@@ -134,7 +134,7 @@ def _agent_sort_key(agent_id: AgentId) -> tuple[int, int | str]:
 
 def animate_mapf(
     G: nx.Graph,
-    plans: Mapping[AgentId, Sequence[TimedNode]],
+    plans: Mapping[int, Sequence[TimedNode]],
     interval_ms: float = 0.1,
     smooth: bool = True,
     substeps: int = 200,

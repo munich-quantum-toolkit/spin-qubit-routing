@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import networkx as nx
 
@@ -356,8 +356,8 @@ def is_diag(u: Coord, v: Coord) -> bool:
     return abs(u[0] - v[0]) == 1 and abs(u[1] - v[1]) == 1
 
 
-def canonical_diamond_tuple(diamond: list[Coord]) -> tuple[Coord, ...]:
-    return tuple(sorted(diamond))
+def canonical_diamond_tuple(diamond: list[Coord]) -> tuple[Coord, Coord, Coord, Coord]:
+    return cast("tuple[Coord, Coord, Coord, Coord]", tuple(sorted(diamond)))
 
 
 def diag_sn_neighbors(G: nx.Graph, n: Coord) -> list[Coord]:

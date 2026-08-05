@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import random
-from typing import Final
+from typing import Final, cast
 
 import networkx as nx
 
@@ -51,7 +51,7 @@ class InteractionPlacementStrategy(PlacementStrategy):
             if first_id == second_id:
                 continue
 
-            interaction = tuple(sorted((first_id, second_id)))
+            interaction = cast("tuple[int, int]", tuple(sorted((first_id, second_id))))
             weight = DECAY**index
 
             interaction_weights[interaction] = interaction_weights.get(interaction, 0.0) + weight

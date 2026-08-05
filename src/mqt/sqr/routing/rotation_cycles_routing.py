@@ -10,7 +10,7 @@ from __future__ import annotations
 import random
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import networkx as nx
 
@@ -217,7 +217,7 @@ class _DiamondHelpers:
 
     @staticmethod
     def canonical_diamond_tuple(diamond: list[Coord]) -> tuple[Coord, Coord, Coord, Coord]:
-        return tuple(sorted(diamond))
+        return cast("tuple[Coord, Coord, Coord, Coord]", tuple(sorted(diamond)))
 
     @staticmethod
     def compute_pair_rotation_updates_for_diamond(

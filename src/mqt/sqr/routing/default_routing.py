@@ -348,6 +348,7 @@ class DefaultRoutingPlanner(RoutingStrategy):
 
                 for qid in (a, b):
                     cut = DefaultRoutingPlanner._retime_until_pre_in_wait(to_meeting_plans[qid], meet, T_pre_sync)
+                    assert cut is not None
                     micro_to_pre[qid] = cut
                     exec_layer_qids.add(qid)
 
