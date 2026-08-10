@@ -122,6 +122,7 @@ known-first-party = ["mqt.sqr"]
 [tool.ruff.lint.per-file-ignores]
 "eval/**" = ["INP001"]
 "examples/**" = ["INP001"]
+"tests/**" = ["INP001"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -156,10 +157,7 @@ PC111 = "We use ruff instead of blacken-docs"
 PC160 = "We use a mirror of crate-ci/typos"
 PC170 = "We do not use rST files anymore"
 # Temporary ignores
-GH100 = "We do not have tests yet"
 PY004 = "We do not have docs yet"
-PY005 = "We do not have tests yet"
-PY007 = "We do not have tests yet"
 
 
 [tool.ty.terminal]
@@ -169,6 +167,24 @@ error-on-warning = true
 [tool.ty.src]
 exclude = [
     "docs/**",
+]
+
+
+[tool.check-sdist]
+# uv_build 0.12 emits a TOML 1.0-normalized pyproject.toml and preserves the
+# original file in source distributions, even when the source already is
+# TOML 1.0.
+sdist-only = ["pyproject.toml.orig"]
+git-only = [
+    ".gitignore",
+    ".license-tools-config.json",
+    ".readthedocs.yaml",
+    ".rumdl.toml",
+    "eval/**",
+    "examples/**",
+    "sitecustomize.py",
+    "tests/**",
+    "uv.lock",
 ]
 
 
