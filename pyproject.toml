@@ -157,10 +157,7 @@ PC111 = "We use ruff instead of blacken-docs"
 PC160 = "We use a mirror of crate-ci/typos"
 PC170 = "We do not use rST files anymore"
 # Temporary ignores
-GH100 = "We do not have tests yet"
 PY004 = "We do not have docs yet"
-PY005 = "We do not have tests yet"
-PY007 = "We do not have tests yet"
 
 
 [tool.ty.terminal]
