@@ -7,7 +7,11 @@
 
 """Temporary test to test the CI."""
 
+from __future__ import annotations
+
+from mqt import sqr
+
 
 def test_temp() -> None:
     """Temporary test to test the CI."""
-    assert True
+    assert sqr is not None
