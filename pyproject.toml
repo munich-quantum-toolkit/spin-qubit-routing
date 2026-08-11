@@ -179,6 +179,7 @@ git-only = [
     ".license-tools-config.json",
     ".readthedocs.yaml",
     ".rumdl.toml",
+    "docs/**",
     "eval/**",
     "examples/**",
     "sitecustomize.py",
