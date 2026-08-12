@@ -25,7 +25,7 @@ This checklist serves as a reminder of a couple of things that ensure your pull 
 
 **If PR contains AI-assisted content:**
 
-- [ ] Any agent that created, edited, or submitted GitHub content was explicitly authorized for that scope, as required by our [AI Usage Guidelines](https://github.com/munich-quantum-toolkit/spin-qubit-routing/blob/main/docs/ai_usage.md).
+- [ ] Any agent that created, edited, or submitted GitHub content was explicitly authorized for that scope, as required by our [AI Usage Guidelines](https://github.com/munich-quantum-toolkit/sqr/blob/main/docs/ai_usage.md).
 - [ ] Every agent-authored or agent-edited public text body begins with the visible disclosure `🤖 *AI text below* 🤖` (titles are exempt).
 - [ ] I have disclosed AI assistance in the PR description.
 - [ ] I confirm that I have personally reviewed and understood all AI-generated content, and accept full responsibility for it.

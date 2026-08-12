@@ -12,7 +12,7 @@ Security updates are applied only to the most recent releases.
 To report vulnerabilities, you can privately report a potential security issue
 via the GitHub security vulnerabilities feature. This can be done here:
 
-<https://github.com/munich-quantum-toolkit/spin-qubit-routing/security/advisories>
+<https://github.com/munich-quantum-toolkit/sqr/security/advisories>
 
 Please do **not** open a public issue about a potential security vulnerability.
 
