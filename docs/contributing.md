@@ -6,12 +6,11 @@
 Thank you for your interest in contributing to MQT SQR! This document outlines
 the development guidelines and how to contribute.
 
-We use GitHub to
-[host code](https://github.com/munich-quantum-toolkit/spin-qubit-routing), to
+We use GitHub to [host code](https://github.com/munich-quantum-toolkit/sqr), to
 [track issues and feature requests][issues], as well as accept
-[pull requests](https://github.com/munich-quantum-toolkit/spin-qubit-routing/pulls).
-See <https://docs.github.com/en/get-started/quickstart> for a general
-introduction to working with GitHub and contributing to projects.
+[pull requests](https://github.com/munich-quantum-toolkit/sqr/pulls). See
+<https://docs.github.com/en/get-started/quickstart> for a general introduction
+to working with GitHub and contributing to projects.
 
 ## Types of Contributions
 
@@ -20,9 +19,8 @@ Pick the path that fits your time and interests:
 - 🐛 Report bugs:
 
   Use the _🐛 Bug report_ template at
-  <https://github.com/munich-quantum-toolkit/spin-qubit-routing/issues>. Include
-  steps to reproduce, expected vs. actual behavior, environment, and a minimal
-  example.
+  <https://github.com/munich-quantum-toolkit/sqr/issues>. Include steps to
+  reproduce, expected vs. actual behavior, environment, and a minimal example.
 
 - 🛠️ Fix bugs:
 
@@ -32,9 +30,8 @@ Pick the path that fits your time and interests:
 - 💡 Propose features:
 
   Use the _✨ Feature request_ template at
-  <https://github.com/munich-quantum-toolkit/spin-qubit-routing/issues>.
-  Describe the motivation, alternatives considered, and (optionally) a small API
-  sketch.
+  <https://github.com/munich-quantum-toolkit/sqr/issues>. Describe the
+  motivation, alternatives considered, and (optionally) a small API sketch.
 
 - ✨ Implement features:
 
@@ -59,7 +56,7 @@ Pick the path that fits your time and interests:
 - 🙌 Community support:
 
   Triage issues, reproduce reports, and answer questions in Discussions:
-  <https://github.com/munich-quantum-toolkit/spin-qubit-routing/discussions>.
+  <https://github.com/munich-quantum-toolkit/sqr/discussions>.
 
 ## Guidelines
 
@@ -193,7 +190,7 @@ instructions on how to set up your development environment.
 
 ## Working on the Package
 
-The package lives in the {code}`src/mqt/spin-qubit-routing` directory.
+The package lives in the {code}`src/mqt/sqr` directory.
 
 We recommend using [{code}`nox`][nox] for development. {code}`nox` is a Python
 automation tool that allows you to define tasks in a {code}`noxfile.py` file and
@@ -395,12 +392,12 @@ not influence the type of an upcoming release.
 :::
 
 Once everything is in order, navigate to the
-[Releases page](https://github.com/munich-quantum-toolkit/spin-qubit-routing/releases)
-on GitHub, edit the release draft if necessary, and publish the release.
+[Releases page](https://github.com/munich-quantum-toolkit/sqr/releases) on
+GitHub, edit the release draft if necessary, and publish the release.
 
 <!--- Links --->
 [nox]: https://nox.thea.codes/en/stable/
 [prek]: https://prek.j178.dev
 [ruff]: https://docs.astral.sh/ruff/
 [ty]: https://docs.astral.sh/ty/
-[issues]: https://github.com/munich-quantum-toolkit/spin-qubit-routing/issues
+[issues]: https://github.com/munich-quantum-toolkit/sqr/issues

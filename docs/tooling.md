@@ -46,6 +46,6 @@ we make use of the following standards:
 | **CodeRabbit**     | Initial PR reviews.                         | [CodeRabbit](https://www.coderabbit.ai/). See {doc}`contributing`.     |
 | **pre-commit.ci**  | Runs pre-commit hooks in CI and auto-fixes. | [pre-commit.ci](https://pre-commit.ci).                                |
 
-[Actions]: https://github.com/munich-quantum-toolkit/spin-qubit-routing/actions
-[Codecov]: https://codecov.io/gh/munich-quantum-toolkit/spin-qubit-routing
+[Actions]: https://github.com/munich-quantum-toolkit/sqr/actions
+[Codecov]: https://codecov.io/gh/munich-quantum-toolkit/sqr
 [Reusable MQT Workflows]: https://github.com/munich-quantum-toolkit/workflows
