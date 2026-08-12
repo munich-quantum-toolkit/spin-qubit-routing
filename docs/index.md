@@ -74,8 +74,8 @@ ecosystem, which is being developed as part of the
 Thank you to all the contributors who have helped make the MQT SQR a reality!
 
 <p align="center">
-<a href="https://github.com/munich-quantum-toolkit/spin-qubit-routing/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=munich-quantum-toolkit/spin-qubit-routing" />
+<a href="https://github.com/munich-quantum-toolkit/sqr/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=munich-quantum-toolkit/sqr" />
 </a>
 </p>
 
