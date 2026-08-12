@@ -11,8 +11,8 @@ body:
         **Thanks for taking the time to report an issue!**
 
         ⚠ Before submitting:
-        1. Search [existing issues](https://github.com/munich-quantum-toolkit/spin-qubit-routing/search?q=is%3Aissue&type=issues) to avoid duplicates
-        2. For questions or discussions, please use our [discussions forum](https://github.com/munich-quantum-toolkit/spin-qubit-routing/discussions)
+        1. Search [existing issues](https://github.com/munich-quantum-toolkit/sqr/search?q=is%3Aissue&type=issues) to avoid duplicates
+        2. For questions or discussions, please use our [discussions forum](https://github.com/munich-quantum-toolkit/sqr/discussions)
 
   - type: textarea
     attributes:

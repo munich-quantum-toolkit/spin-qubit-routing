@@ -96,7 +96,7 @@ third-party licenses or copyrights.
 - **Training Data**: Be aware that some AI tools may generate code that is
   substantially similar to their training data. You must ensure that you have
   the right to contribute the generated code under
-  [our license](https://github.com/munich-quantum-toolkit/spin-qubit-routing/blob/main/LICENSE).
+  [our license](https://github.com/munich-quantum-toolkit/sqr/blob/main/LICENSE).
 
 ## Extractive Contributions
 

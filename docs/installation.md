@@ -4,8 +4,8 @@
 # Installation
 
 MQT SQR is a Python package available on
-[PyPI](https://pypi.org/project/mqt.spin-qubit-routing/). It can be installed on
-all major operating systems with all
+[PyPI](https://pypi.org/project/mqt.sqr/). It can be installed on all major
+operating systems with all
 [officially supported Python versions](https://devguide.python.org/versions/).
 
 :::::{tip}
@@ -50,7 +50,7 @@ See the [uv documentation][uv] for more information.
 :sync: uv
 
 ```console
-uv pip install mqt.spin-qubit-routing
+uv pip install mqt.sqr
 ```
 
 :::
@@ -59,7 +59,7 @@ uv pip install mqt.spin-qubit-routing
 :sync: pip
 
 ```console
-python -m pip install mqt.spin-qubit-routing
+python -m pip install mqt.sqr
 ```
 
 :::
@@ -69,7 +69,7 @@ python -m pip install mqt.spin-qubit-routing
 Verify the installation:
 
 ```console
-python -c "import mqt.spin-qubit-routing; print(mqt.spin-qubit-routing.__version__)"
+python -c "import mqt.sqr; print(mqt.sqr.__version__)"
 ```
 
 This prints the installed package version.
@@ -85,7 +85,7 @@ installed when your project is installed.
 :::{tab-item} {code}`uv` _(recommended)_
 
 ```console
-uv add mqt.spin-qubit-routing
+uv add mqt.sqr
 ```
 
 :::
@@ -95,7 +95,7 @@ uv add mqt.spin-qubit-routing
 ```toml
 [project]
 # ...
-dependencies = ["mqt.spin-qubit-routing>=<version>"]
+dependencies = ["mqt.sqr>=<version>"]
 # ...
 ```
 
@@ -108,7 +108,7 @@ from setuptools import setup
 
 setup(
     # ...
-    install_requires=["mqt.spin-qubit-routing>=<version>"],
+    install_requires=["mqt.sqr>=<version>"],
     # ...
 )
 ```
@@ -132,13 +132,13 @@ guidelines and workflows, see {doc}`contributing`.
    :::{tab-item} External Contribution
 
    If you do not have write access to the
-   [munich-quantum-toolkit/spin-qubit-routing](https://github.com/munich-quantum-toolkit/spin-qubit-routing)
+   [munich-quantum-toolkit/sqr](https://github.com/munich-quantum-toolkit/sqr)
    repository, fork the repository on GitHub (see
    <https://docs.github.com/en/get-started/quickstart/fork-a-repo>) and clone
    your fork locally.
 
    ```console
-   git clone git@github.com:your_name_here/spin-qubit-routing.git mqt-spin-qubit-routing
+   git clone git@github.com:your_name_here/sqr.git mqt-sqr
    ```
 
    :::
@@ -146,11 +146,11 @@ guidelines and workflows, see {doc}`contributing`.
    :::{tab-item} Internal Contribution
 
    If you have write access to the
-   [munich-quantum-toolkit/spin-qubit-routing](https://github.com/munich-quantum-toolkit/spin-qubit-routing)
+   [munich-quantum-toolkit/sqr](https://github.com/munich-quantum-toolkit/sqr)
    repository, clone the repository locally.
 
    ```console
-   git clone git@github.com/munich-quantum-toolkit/spin-qubit-routing.git mqt-spin-qubit-routing
+   git clone git@github.com/munich-quantum-toolkit/sqr.git mqt-sqr
    ```
 
    :::
@@ -160,7 +160,7 @@ guidelines and workflows, see {doc}`contributing`.
 2. Change into the project directory:
 
    ```console
-   cd mqt-spin-qubit-routing
+   cd mqt-sqr
    ```
 
 3. Create a branch for local development:
