@@ -11,7 +11,7 @@ Follow these steps to execute the framework:
 1. Clone this repository using
 
    ```text
-   git clone https://github.com/munich-quantum-toolkit/spin-qubit-routing.git
+   git clone https://github.com/munich-quantum-toolkit/sqr.git
    ```
 
 2. In [`examples/main.py`](./examples/main.py), select the desired
