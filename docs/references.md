@@ -2,8 +2,9 @@
 
 MQT SQR has a strong foundation in peer‑reviewed research. Many of its built‑in
 algorithms are based on methods published in scientific journals and
-conferences. For an overview of MQT SQR and its features, see {cite:p}`mqtsqr`.
-If you want to cite this article, please use the following BibTeX entry:
+conferences. For an overview of MQT SQR and its features, see
+{cite:p}`shen2026sqr`. If you want to cite this article, please use the
+following BibTeX entry:
 
 ```bibtex
 @article{shen2026sqr,
