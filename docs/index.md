@@ -28,6 +28,7 @@ self
 :maxdepth: 1
 
 installation
+references
 ```
 
 ```{toctree}
