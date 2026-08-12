@@ -52,9 +52,9 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/munich-quantum-toolkit/sqr"
-"Bug Tracker" = "https://github.com/munich-quantum-toolkit/sqr/issues"
+Documentation = "https://mqt.readthedocs.io/projects/sqr"
+Issues = "https://github.com/munich-quantum-toolkit/sqr/issues"
 Discussions = "https://github.com/munich-quantum-toolkit/sqr/discussions"
-Research = "https://www.cda.cit.tum.de/research/quantum/"
 
 
 [tool.pytest]
