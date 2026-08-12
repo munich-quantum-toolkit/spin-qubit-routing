@@ -1,0 +1,265 @@
+<!--- This file has been generated from an external template. Please do not modify it directly. -->
+<!--- Changes should be contributed to https://github.com/munich-quantum-toolkit/templates. -->
+
+# Installation
+
+MQT SQR is a Python package available on
+[PyPI](https://pypi.org/project/mqt.spin-qubit-routing/). It can be installed on
+all major operating systems with all
+[officially supported Python versions](https://devguide.python.org/versions/).
+
+:::::{tip}
+:name: uv-recommendation
+
+We recommend using [{code}`uv`][uv]. It is a fast Python package and project
+manager by [Astral](https://astral.sh/) (creators of [{code}`ruff`][ruff]). It
+can replace {code}`pip` and {code}`virtualenv`, automatically manages virtual
+environments, installs packages, and can install Python itself. It is
+significantly faster than {code}`pip`.
+
+If you do not have {code}`uv` installed, install it with:
+
+::::{tab-set}
+
+:::{tab-item} Linux and macOS
+
+```console
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+:::
+
+:::{tab-item} Windows (PowerShell)
+
+```console
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+:::
+
+::::
+
+See the [uv documentation][uv] for more information.
+
+:::::
+
+::::{tab-set}
+:sync-group: installer
+
+:::{tab-item} {code}`uv` _(recommended)_
+:sync: uv
+
+```console
+uv pip install mqt.spin-qubit-routing
+```
+
+:::
+
+:::{tab-item} {code}`pip`
+:sync: pip
+
+```console
+python -m pip install mqt.spin-qubit-routing
+```
+
+:::
+
+::::
+
+Verify the installation:
+
+```console
+python -c "import mqt.spin-qubit-routing; print(mqt.spin-qubit-routing.__version__)"
+```
+
+This prints the installed package version.
+
+## Integrating MQT SQR into Your Project
+
+To use the MQT SQR Python package in your project, add it as a dependency in
+your {code}`pyproject.toml` or {code}`setup.py`. This ensures the package is
+installed when your project is installed.
+
+::::{tab-set}
+
+:::{tab-item} {code}`uv` _(recommended)_
+
+```console
+uv add mqt.spin-qubit-routing
+```
+
+:::
+
+:::{tab-item} {code}`pyproject.toml`
+
+```toml
+[project]
+# ...
+dependencies = ["mqt.spin-qubit-routing>=<version>"]
+# ...
+```
+
+:::
+
+:::{tab-item} {code}`setup.py`
+
+```python
+from setuptools import setup
+
+setup(
+    # ...
+    install_requires=["mqt.spin-qubit-routing>=<version>"],
+    # ...
+)
+```
+
+:::
+
+::::
+
+(development-setup)=
+
+## Development Setup
+
+Set up a reproducible development environment for MQT SQR. This is the
+recommended starting point for both bug fixes and new features. For detailed
+guidelines and workflows, see {doc}`contributing`.
+
+1. Get the code: <!-- rumdl-disable-line MD013 -->
+
+   ::::{tab-set}
+
+   :::{tab-item} External Contribution
+
+   If you do not have write access to the
+   [munich-quantum-toolkit/spin-qubit-routing](https://github.com/munich-quantum-toolkit/spin-qubit-routing)
+   repository, fork the repository on GitHub (see
+   <https://docs.github.com/en/get-started/quickstart/fork-a-repo>) and clone
+   your fork locally.
+
+   ```console
+   git clone git@github.com:your_name_here/spin-qubit-routing.git mqt-spin-qubit-routing
+   ```
+
+   :::
+
+   :::{tab-item} Internal Contribution
+
+   If you have write access to the
+   [munich-quantum-toolkit/spin-qubit-routing](https://github.com/munich-quantum-toolkit/spin-qubit-routing)
+   repository, clone the repository locally.
+
+   ```console
+   git clone git@github.com/munich-quantum-toolkit/spin-qubit-routing.git mqt-spin-qubit-routing
+   ```
+
+   :::
+
+   ::::
+
+2. Change into the project directory:
+
+   ```console
+   cd mqt-spin-qubit-routing
+   ```
+
+3. Create a branch for local development:
+
+   ```console
+   git checkout -b name-of-your-bugfix-or-feature
+   ```
+
+   Now you can make your changes locally.
+
+4. Install the project and its development dependencies: <!-- rumdl-disable-line MD013 -->
+
+   We highly recommend using modern, fast tooling for the development workflow.
+   We recommend using [{code}`uv`][uv].
+   If you don't have {code}`uv`,
+   follow the installation instructions in the recommendation above
+   (see {ref}`tip above <uv-recommendation>`).
+   See the [uv documentation][uv] for more information.
+
+   ::::{tab-set}
+   :sync-group: installer
+
+   :::{tab-item} {code}`uv` _(recommended)_
+   :sync: uv
+
+   Install the project (including development dependencies) with [{code}`uv`][uv]:
+
+   ```console
+   uv sync
+   ```
+
+   :::
+
+   :::{tab-item} {code}`pip`
+   :sync: pip
+
+   If you really don't want to use [{code}`uv`][uv], you can install the project
+   and the development dependencies into a virtual environment using
+   {code}`pip`.
+
+   ```console
+   python -m venv .venv
+   source ./.venv/bin/activate
+   python -m pip install -U pip
+   python -m pip install -e . --group dev
+   ```
+
+   :::
+
+   ::::
+
+5. Install pre-commit hooks to ensure code quality: <!-- rumdl-disable-line MD013 -->
+
+   The project uses pre-commit hooks for running linters and formatting tools on each commit.
+   These checks can be run manually via [{code}`nox`][nox], by running:
+
+   ```console
+   nox -s lint
+   ```
+
+   They can also be run automatically on every commit via [{code}`prek`][prek] (recommended). To set
+   this up, install {code}`prek`, e.g., via:
+
+   ::::{tab-set}
+
+   :::{tab-item} Linux and macOS
+
+   ```console
+   curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/prek/releases/latest/download/prek-installer.sh | sh
+   ```
+
+   :::
+
+   :::{tab-item} Windows (PowerShell)
+
+   ```console
+   powershell -ExecutionPolicy ByPass -c "irm https://github.com/j178/prek/releases/latest/download/prek-installer.ps1 | iex"
+   ```
+
+   :::
+
+   :::{tab-item} {code}`uv`
+
+   ```console
+   uv tool install prek
+   ```
+
+   :::
+
+   ::::
+
+   Then run:
+
+   ```console
+   prek install
+   ```
+
+<!-- Links -->
+[nox]: https://nox.thea.codes/en/stable/
+[prek]: https://prek.j178.dev
+[uv]: https://docs.astral.sh/uv/
+[ruff]: https://docs.astral.sh/ruff/
