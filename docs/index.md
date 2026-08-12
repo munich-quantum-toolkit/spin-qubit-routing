@@ -1,6 +1,6 @@
-# MQT SQR
+# MQT SQR - A Tool for Spin Qubit Routing
 
-The MQT SQR is a tool for spin qubit routing. It is developed as part of the
+MQT SQR is a tool for spin qubit routing. It is developed as part of the
 _{doc}`Munich Quantum Toolkit (MQT) <mqt:index>`_.
 
 We appreciate any feedback and contributions to the project. If you want to
