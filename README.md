@@ -4,6 +4,12 @@ This repository contains the implementation of the routing algorithms and
 initial-mapping techniques described in the paper "_Routing Techniques for
 Error-Corrected Silicon Spin Qubit Quantum Architectures_".
 
+<p align="center">
+  <a href="https://mqt.readthedocs.io/projects/sqr">
+  <img width=30% src="https://img.shields.io/badge/documentation-blue?style=for-the-badge&logo=read%20the%20docs" alt="Documentation" />
+  </a>
+</p>
+
 ## Usage
 
 Follow these steps to execute the framework:
