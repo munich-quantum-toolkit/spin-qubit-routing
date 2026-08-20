@@ -37,7 +37,7 @@ release = version.split("+")[0]
 project = "MQT SQR"
 author = "Chair for Design Automation, TUM"
 language = "en"
-project_copyright = "2023 - 2026 Chair for Design Automation, TUM"
+project_copyright = "2026 Chair for Design Automation, TUM"
 
 master_doc = "index"
 
