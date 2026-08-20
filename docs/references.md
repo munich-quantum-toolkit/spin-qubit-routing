@@ -8,7 +8,7 @@ following BibTeX entry:
 
 ```bibtex
 @article{shen2026sqr,
-  title        = {{Routing Techniques for Error-Corrected Silicon Spin Qubit Quantum Architectures}},
+  title        = {Routing Techniques for Error-Corrected Silicon Spin Qubit Quantum Architectures},
   author       = {Shen, Julian and Schmid, Ludwig and Wille, Robert},
   year         = {2026},
   eprint       = {2607.07822},

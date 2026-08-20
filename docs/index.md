@@ -12,7 +12,7 @@ installation or the usage of MQT SQR, please let us know on our
 ## Overview
 
 :::{note}
-The documentation is still in the process of being built.
+MQT SQR is still in active development.
 :::
 
 ```{toctree}
